@@ -25,9 +25,15 @@
 #define Service_FilterManagerInstalled 0x87
 #define Service_FilterManagerDying 0x88
 
-static void issue_service(int service_no)
+static void announce(int started)
 {
-    _swix(OS_ServiceCall, _INR(0,1), 0, service_no);
+    if (started) {
+        /* Service_FilterManagerInstalled (&87) */
+        _swix(OS_ServiceCall, _IN(1), Service_FilterManagerInstalled);
+    } else {
+        /* Service_FilterManagerDying (&88) */
+        _swix(OS_ServiceCall, _IN(1), Service_FilterManagerDying);
+    }
 }
 
 /***************************************************************************
@@ -37,11 +43,11 @@ _kernel_oserror *Mod_Init(const char *tail, int podule_base, void *pw)
 {
     (void)tail;
     (void)podule_base;
-    (void)pw;
 
     dprintf("Module FilterManager initialised\n");
-    
-    issue_service(Service_FilterManagerInstalled);
+
+    /* Schedule the 'Installed' announcement */
+    _swix(OS_AddCallBack, _INR(0, 1), StartupCallback_Entry, pw);
 
     return NULL;
 }
@@ -54,13 +60,29 @@ _kernel_oserror *Mod_Final(int fatal, int podule_base, void *pw)
 {
     (void)fatal;
     (void)podule_base;
-    (void)pw;
 
     dprintf("Module FilterManager dying\n");
 
-    issue_service(Service_FilterManagerDying);
+    /* Remove any pending startup callback */
+    _swix(OS_RemoveCallBack, _INR(0, 1), StartupCallback_Entry, pw);
+
+    /* Announce we are dying BEFORE shutting down systems */
+    announce(0);
+
     filter_cleanup();
 
+    return NULL;
+}
+
+/***************************************************************************
+ * Function:     StartupCallback_Handler
+ **************************************************************************/
+_kernel_oserror *StartupCallback_Handler(_kernel_swi_regs *r, void *pw)
+{
+    (void)r;
+    (void)pw;
+
+    announce(1);
     return NULL;
 }
 
@@ -74,13 +96,13 @@ _kernel_oserror *Mod_SWI(int swi_no, _kernel_swi_regs *r, void *pw)
     switch (swi_no) {
         case Filter_RegisterPreFilter - Filter_00:
             return filter_register_pre((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
-        
+
         case Filter_RegisterPostFilter - Filter_00:
             return filter_register_post((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3], r->r[4]);
-        
+
         case Filter_DeRegisterPreFilter - Filter_00:
             return filter_deregister_pre((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
-        
+
         case Filter_DeRegisterPostFilter - Filter_00:
             return filter_deregister_post((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3], r->r[4]);
 
@@ -113,7 +135,7 @@ _kernel_oserror *Mod_SWI(int swi_no, _kernel_swi_regs *r, void *pw)
 
         case Filter_DeRegisterIconBorderFilter - Filter_00:
             return filter_deregister_icon_border((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2]);
-        
+
         default:
             return error_BAD_SWI;
     }
@@ -150,7 +172,7 @@ void Mod_Service(int service_no, _kernel_swi_regs *r, void *pw)
 
         task_handle = r->r[2];
         dprintf("WimpCloseDown for task %08X\n", task_handle);
-        
+
         if (task_handle != 0) {
             pre = global_state.pre_filters;
             while (pre) {
@@ -159,7 +181,7 @@ void Mod_Service(int service_no, _kernel_swi_regs *r, void *pw)
                     pre = global_state.pre_filters;
                 } else pre = pre->next;
             }
-            
+
             post = global_state.post_filters;
             while (post) {
                 if (post->task_handle == task_handle) {

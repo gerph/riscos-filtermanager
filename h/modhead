@@ -179,6 +179,28 @@ _kernel_oserror *Mod_SWI(int number, _kernel_swi_regs *r, void *pw);
 /* Special error for 'SWI values out of range for this module' */
 #define error_BAD_SWI ((_kernel_oserror *) -1)
 
+
+/***************************************************************************
+ * Function:     StartupCallback_Entry
+ * Description:  Symbol for entry point to module - NOT a C function.
+ *               This name should be used as an argument to
+ *               OS_Claim/OS_Release as required, but should never be called
+ *               from C.
+ **************************************************************************/
+extern void StartupCallback_Entry(void);
+
+
+/***************************************************************************
+ * Function:     StartupCallback_Handler
+ * Description:  Generic handler function
+ * Parameters:   r  = pointer to register block on entry
+ *               pw = private word for module
+ * On exit:      Update r to alter return values
+ *               Return NULL to return with V clear
+ *               Return an error pointer to set V and r0
+ **************************************************************************/
+_kernel_oserror *StartupCallback_Handler(_kernel_swi_regs *r, void *pw);
+
 /* Error base for this module */
 #define ERROR_BASE (0x0081d400)
 /* Error messages embedded in the module header, based at &81d400 */
