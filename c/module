@@ -1,0 +1,196 @@
+/*******************************************************************
+ * File:        module
+ * Purpose:     FilterManager module interface
+ * Author:      Gemini CLI
+ ******************************************************************/
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "kernel.h"
+#include "swis.h"
+#include "modhead.h"
+#include "filter.h"
+
+/* #define DEBUG */
+
+#ifdef DEBUG
+#define dprintf if (1) printf
+#else
+#define dprintf if (0) printf
+#endif
+
+#define Service_WimpCloseDown 0x53
+#define Service_FilterManagerInstalled 0x87
+#define Service_FilterManagerDying 0x88
+
+static void issue_service(int service_no)
+{
+    _swix(OS_ServiceCall, _INR(0,1), 0, service_no);
+}
+
+/***************************************************************************
+ * Function:     Mod_Init
+ **************************************************************************/
+_kernel_oserror *Mod_Init(const char *tail, int podule_base, void *pw)
+{
+    (void)tail;
+    (void)podule_base;
+    (void)pw;
+
+    dprintf("Module FilterManager initialised\n");
+    
+    issue_service(Service_FilterManagerInstalled);
+
+    return NULL;
+}
+
+
+/***************************************************************************
+ * Function:     Mod_Final
+ **************************************************************************/
+_kernel_oserror *Mod_Final(int fatal, int podule_base, void *pw)
+{
+    (void)fatal;
+    (void)podule_base;
+    (void)pw;
+
+    dprintf("Module FilterManager dying\n");
+
+    issue_service(Service_FilterManagerDying);
+    filter_cleanup();
+
+    return NULL;
+}
+
+/***************************************************************************
+ * Function:     Mod_SWI
+ **************************************************************************/
+_kernel_oserror *Mod_SWI(int swi_no, _kernel_swi_regs *r, void *pw)
+{
+    (void)pw;
+
+    switch (swi_no) {
+        case Filter_RegisterPreFilter - Filter_00:
+            return filter_register_pre((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+        
+        case Filter_RegisterPostFilter - Filter_00:
+            return filter_register_post((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3], r->r[4]);
+        
+        case Filter_DeRegisterPreFilter - Filter_00:
+            return filter_deregister_pre((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+        
+        case Filter_DeRegisterPostFilter - Filter_00:
+            return filter_deregister_post((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3], r->r[4]);
+
+        case Filter_RegisterRectFilter - Filter_00:
+            return filter_register_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+
+        case Filter_DeRegisterRectFilter - Filter_00:
+            return filter_deregister_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+
+        case Filter_RegisterCopyFilter - Filter_00:
+            return filter_register_copy((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2]);
+
+        case Filter_DeRegisterCopyFilter - Filter_00:
+            return filter_deregister_copy((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2]);
+
+        case Filter_RegisterPostRectFilter - Filter_00:
+            return filter_register_post_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+
+        case Filter_DeRegisterPostRectFilter - Filter_00:
+            return filter_deregister_post_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+
+        case Filter_RegisterPostIconFilter - Filter_00:
+            return filter_register_post_icon((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+
+        case Filter_DeRegisterPostIconFilter - Filter_00:
+            return filter_deregister_post_icon((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+
+        case Filter_RegisterIconBorderFilter - Filter_00:
+            return filter_register_icon_border((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+
+        case Filter_DeRegisterIconBorderFilter - Filter_00:
+            return filter_deregister_icon_border((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2]);
+        
+        default:
+            return error_BAD_SWI;
+    }
+}
+
+/***************************************************************************
+ * Function:     Mod_Command
+ **************************************************************************/
+_kernel_oserror *Mod_Command(const char *arg_string, int argc, int cmd_no, void *pw)
+{
+    (void)arg_string;
+    (void)argc;
+    (void)cmd_no;
+    (void)pw;
+
+    filter_list();
+    return NULL;
+}
+
+/***************************************************************************
+ * Function:     Mod_Service
+ **************************************************************************/
+void Mod_Service(int service_no, _kernel_swi_regs *r, void *pw)
+{
+    (void)pw;
+
+    if (service_no == Service_WimpCloseDown) {
+        int task_handle;
+        pre_filter_t *pre;
+        post_filter_t *post;
+        rect_filter_t *rect;
+        post_rect_filter_t *prect;
+        post_icon_filter_t *picon;
+
+        task_handle = r->r[2];
+        dprintf("WimpCloseDown for task %08X\n", task_handle);
+        
+        if (task_handle != 0) {
+            pre = global_state.pre_filters;
+            while (pre) {
+                if (pre->task_handle == task_handle) {
+                    filter_deregister_pre(pre->name, pre->routine, pre->r12, pre->task_handle);
+                    pre = global_state.pre_filters;
+                } else pre = pre->next;
+            }
+            
+            post = global_state.post_filters;
+            while (post) {
+                if (post->task_handle == task_handle) {
+                    filter_deregister_post(post->name, post->routine, post->r12, post->task_handle, post->event_mask);
+                    post = global_state.post_filters;
+                } else post = post->next;
+            }
+
+            rect = global_state.rect_filters;
+            while (rect) {
+                if (rect->task_handle == task_handle) {
+                    filter_deregister_rect(rect->name, rect->routine, rect->r12, rect->task_handle);
+                    rect = global_state.rect_filters;
+                } else rect = rect->next;
+            }
+
+            prect = global_state.post_rect_filters;
+            while (prect) {
+                if (prect->task_handle == task_handle) {
+                    filter_deregister_post_rect(prect->name, prect->routine, prect->r12, prect->task_handle);
+                    prect = global_state.post_rect_filters;
+                } else prect = prect->next;
+            }
+
+            picon = global_state.post_icon_filters;
+            while (picon) {
+                if (picon->task_handle == task_handle) {
+                    filter_deregister_post_icon(picon->name, picon->routine, picon->r12, picon->task_handle);
+                    picon = global_state.post_icon_filters;
+                } else picon = picon->next;
+            }
+        }
+    }
+}

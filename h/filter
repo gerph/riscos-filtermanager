@@ -1,0 +1,93 @@
+#ifndef filter_H
+#define filter_H
+
+#include "kernel.h"
+
+typedef struct pre_filter {
+    char *name;
+    void (*routine)(void);
+    void *r12;
+    int task_handle;
+    struct pre_filter *next;
+} pre_filter_t;
+
+typedef struct post_filter {
+    char *name;
+    void (*routine)(void);
+    void *r12;
+    int task_handle;
+    int event_mask;
+    struct post_filter *next;
+} post_filter_t;
+
+typedef struct rect_filter {
+    char *name;
+    void (*routine)(void);
+    void *r12;
+    int task_handle;
+    struct rect_filter *next;
+} rect_filter_t;
+
+typedef struct copy_filter {
+    char *name;
+    void (*routine)(void);
+    void *r12;
+    struct copy_filter *next;
+} copy_filter_t;
+
+typedef struct post_rect_filter {
+    char *name;
+    void (*routine)(void);
+    void *r12;
+    int task_handle;
+    struct post_rect_filter *next;
+} post_rect_filter_t;
+
+typedef struct post_icon_filter {
+    char *name;
+    void (*routine)(void);
+    void *r12;
+    int task_handle;
+    struct post_icon_filter *next;
+} post_icon_filter_t;
+
+typedef struct icon_border_filter {
+    const char *name;
+    void (*routine)(void);
+    void *r12;
+    int border_mask;
+    struct icon_border_filter *next;
+} icon_border_filter_t;
+
+typedef struct {
+    pre_filter_t *pre_filters;
+    post_filter_t *post_filters;
+    rect_filter_t *rect_filters;
+    copy_filter_t *copy_filters;
+    post_rect_filter_t *post_rect_filters;
+    post_icon_filter_t *post_icon_filters;
+    icon_border_filter_t *icon_border_filters;
+} filter_state_t;
+
+extern filter_state_t global_state;
+
+_kernel_oserror *filter_register_pre(const char *name, void (*routine)(void), void *r12, int task);
+_kernel_oserror *filter_register_post(const char *name, void (*routine)(void), void *r12, int task, int mask);
+_kernel_oserror *filter_register_rect(const char *name, void (*routine)(void), void *r12, int task);
+_kernel_oserror *filter_register_copy(const char *name, void (*routine)(void), void *r12);
+_kernel_oserror *filter_register_post_rect(const char *name, void (*routine)(void), void *r12, int task);
+_kernel_oserror *filter_register_post_icon(const char *name, void (*routine)(void), void *r12, int task);
+_kernel_oserror *filter_register_icon_border(const char *name, void (*routine)(void), void *r12, int mask);
+
+_kernel_oserror *filter_deregister_pre(const char *name, void (*routine)(void), void *r12, int task);
+_kernel_oserror *filter_deregister_post(const char *name, void (*routine)(void), void *r12, int task, int mask);
+_kernel_oserror *filter_deregister_rect(const char *name, void (*routine)(void), void *r12, int task);
+_kernel_oserror *filter_deregister_copy(const char *name, void (*routine)(void), void *r12);
+_kernel_oserror *filter_deregister_post_rect(const char *name, void (*routine)(void), void *r12, int task);
+_kernel_oserror *filter_deregister_post_icon(const char *name, void (*routine)(void), void *r12, int task);
+_kernel_oserror *filter_deregister_icon_border(const char *name, void (*routine)(void), void *r12);
+
+void filter_cleanup(void);
+void filter_list(void);
+
+#endif
