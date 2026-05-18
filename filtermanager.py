@@ -305,7 +305,7 @@ class FilterManager(PyModule):
                           lambda entry: (entry.name,
                                          self._hex(entry.routine),
                                          self._hex(entry.r12),
-                                         self._hex(entry.task_handle)))
+                                         self._task_display(entry.task_handle)))
 
         self._write_table("Post-filters:",
                           ("Name", "Routine", "R12", "Task", "Mask"),
@@ -313,7 +313,7 @@ class FilterManager(PyModule):
                           lambda entry: (entry.name,
                                          self._hex(entry.routine),
                                          self._hex(entry.r12),
-                                         self._hex(entry.task_handle),
+                                         self._task_display(entry.task_handle),
                                          self._hex(entry.event_mask)))
 
         self._write_table("Get Rectangle filters:",
@@ -322,7 +322,7 @@ class FilterManager(PyModule):
                           lambda entry: (entry.name,
                                          self._hex(entry.routine),
                                          self._hex(entry.r12),
-                                         self._hex(entry.task_handle)))
+                                         self._task_display(entry.task_handle)))
 
         self._write_table("Rectangle Copy filters:",
                           ("Name", "Routine", "R12"),
@@ -337,7 +337,7 @@ class FilterManager(PyModule):
                           lambda entry: (entry.name,
                                          self._hex(entry.routine),
                                          self._hex(entry.r12),
-                                         self._hex(entry.task_handle)))
+                                         self._task_display(entry.task_handle)))
 
         self._write_table("Post-Icon filters:",
                           ("Name", "Routine", "R12", "Task"),
@@ -345,7 +345,7 @@ class FilterManager(PyModule):
                           lambda entry: (entry.name,
                                          self._hex(entry.routine),
                                          self._hex(entry.r12),
-                                         self._hex(entry.task_handle)))
+                                         self._task_display(entry.task_handle)))
 
         self._write_table("Icon Border filters:",
                           ("Name", "Routine", "R12", "Mask"),
@@ -387,6 +387,12 @@ class FilterManager(PyModule):
 
     def _hex(self, value):
         return "%08X" % (self._u32(value),)
+
+    def _task_display(self, task_handle):
+        task_name = self.ro.kernel.api.taskmanager_tasknamefromhandle(task_handle)
+        if task_name is None:
+            return self._hex(task_handle)
+        return task_name
 
     def _u32(self, value):
         return value & 0xffffffff

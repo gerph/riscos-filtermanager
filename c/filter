@@ -7,6 +7,22 @@
 
 filter_state_t global_state = { NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
+static const char *task_name(int task_handle, char *buffer, size_t buffer_size)
+{
+    _kernel_oserror *err;
+    char *name;
+
+    err = _swix(TaskManager_TaskNameFromHandle, _IN(0) | _OUT(0),
+                task_handle, &name);
+    if (err) {
+        (void)buffer_size;
+        sprintf(buffer, "%08X", task_handle);
+        return buffer;
+    }
+
+    return name;
+}
+
 _kernel_oserror *filter_register_pre(const char *name, void (*routine)(void), void *r12, int task)
 {
     pre_filter_t *curr;
@@ -465,13 +481,16 @@ void filter_list(void)
     post_rect_filter_t *prect = global_state.post_rect_filters;
     post_icon_filter_t *picon = global_state.post_icon_filters;
     icon_border_filter_t *iborder = global_state.icon_border_filters;
+    char task_buffer[16];
 
     printf("Pre-filters:\n");
     if (!pre) printf("  None\n");
     else {
         printf("  %-20s %-8s %-8s %-8s\n", "Name", "Routine", "R12", "Task");
         while (pre) {
-            printf("  %-20s %08X %08X %08X\n", pre->name, (unsigned int)pre->routine, (unsigned int)pre->r12, pre->task_handle);
+            printf("  %-20s %08X %08X %-8s\n", pre->name, (unsigned int)pre->routine,
+                   (unsigned int)pre->r12,
+                   task_name(pre->task_handle, task_buffer, sizeof(task_buffer)));
             pre = pre->next;
         }
     }
@@ -481,7 +500,10 @@ void filter_list(void)
     else {
         printf("  %-20s %-8s %-8s %-8s %-8s\n", "Name", "Routine", "R12", "Task", "Mask");
         while (post) {
-            printf("  %-20s %08X %08X %08X %08X\n", post->name, (unsigned int)post->routine, (unsigned int)post->r12, post->task_handle, post->event_mask);
+            printf("  %-20s %08X %08X %-8s %08X\n", post->name,
+                   (unsigned int)post->routine, (unsigned int)post->r12,
+                   task_name(post->task_handle, task_buffer, sizeof(task_buffer)),
+                   post->event_mask);
             post = post->next;
         }
     }
@@ -491,7 +513,9 @@ void filter_list(void)
     else {
         printf("  %-20s %-8s %-8s %-8s\n", "Name", "Routine", "R12", "Task");
         while (rect) {
-            printf("  %-20s %08X %08X %08X\n", rect->name, (unsigned int)rect->routine, (unsigned int)rect->r12, rect->task_handle);
+            printf("  %-20s %08X %08X %-8s\n", rect->name, (unsigned int)rect->routine,
+                   (unsigned int)rect->r12,
+                   task_name(rect->task_handle, task_buffer, sizeof(task_buffer)));
             rect = rect->next;
         }
     }
@@ -511,7 +535,9 @@ void filter_list(void)
     else {
         printf("  %-20s %-8s %-8s %-8s\n", "Name", "Routine", "R12", "Task");
         while (prect) {
-            printf("  %-20s %08X %08X %08X\n", prect->name, (unsigned int)prect->routine, (unsigned int)prect->r12, prect->task_handle);
+            printf("  %-20s %08X %08X %-8s\n", prect->name,
+                   (unsigned int)prect->routine, (unsigned int)prect->r12,
+                   task_name(prect->task_handle, task_buffer, sizeof(task_buffer)));
             prect = prect->next;
         }
     }
@@ -521,7 +547,9 @@ void filter_list(void)
     else {
         printf("  %-20s %-8s %-8s %-8s\n", "Name", "Routine", "R12", "Task");
         while (picon) {
-            printf("  %-20s %08X %08X %08X\n", picon->name, (unsigned int)picon->routine, (unsigned int)picon->r12, picon->task_handle);
+            printf("  %-20s %08X %08X %-8s\n", picon->name,
+                   (unsigned int)picon->routine, (unsigned int)picon->r12,
+                   task_name(picon->task_handle, task_buffer, sizeof(task_buffer)));
             picon = picon->next;
         }
     }
