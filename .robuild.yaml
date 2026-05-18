@@ -37,6 +37,12 @@ jobs:
       - amu -f Makefile ram
 
       - echo
+      - echo *** Build the FilterRegTest module (32-bit) ***
+      - dir test.filterreg
+      - amu -f Makefile ram
+      - dir ^.^
+
+      - echo
       - echo *** Build the RAM module (26-bit) ***
       - amu -f Makefile ram BUILD26=1 BUILD32=
 
@@ -51,13 +57,15 @@ jobs:
 
       # Tests - loading to check that it starts up
       - echo
-      - echo *** Load the module ***
+      - echo *** Load the modules and exercise filter registration ***
       - RMLoad rm32.FilterManager
+      - RMLoad test.filterreg.rm32.FilterRegTest
+      - FilterRegTestStatus
+      - Filters
 
-      # Insert any testing here...
-      #- echo
-      #- echo *** Test that the module works ***
-      #- /TestModule
+      - echo
+      - echo *** Kill the test module ***
+      - RMKill FilterRegTest
 
       - echo
       - echo *** Kill the module ***

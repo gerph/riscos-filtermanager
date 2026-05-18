@@ -1,0 +1,19 @@
+title-string: FilterRegTest
+
+help-string: FilterRegTest 0.01
+
+initialisation-code: Mod_Init
+
+finalisation-code: Mod_Final
+
+generic-veneers: TestFilter_Entry/TestFilter_Handler
+
+command-keyword-table: Mod_Command
+   FilterRegTestStatus(min-args: 0, max-args: 0, help-text: "*FilterRegTestStatus reports whether the test filter registered.", invalid-syntax: "Syntax: *FilterRegTestStatus")
+
+service-call-handler: Mod_Service &87 &88
+
+error-base: &81D500 ; UNALLOCATED
+
+error-identifiers: \
+    Err_NotRegistered("Test filter not registered")

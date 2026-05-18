@@ -1,0 +1,293 @@
+/*******************************************************************
+ * File:        module
+ * Purpose:     Filter registration test module for FilterManager CI
+ * Author:      Gerph
+ ******************************************************************/
+
+#include <stdio.h>
+
+#include "kernel.h"
+#include "swis.h"
+#include "modhead.h"
+
+#define Service_FilterManagerInstalled 0x87
+#define Service_FilterManagerDying     0x88
+#define ModHandReason_LookupName       18
+#define XFilter_RegisterPostIconFilter   0x0006264a
+#define XFilter_DeRegisterPostIconFilter 0x0006264b
+
+typedef struct task_info {
+    int task_handle;
+    char *task_name;
+    int memory_k;
+    int flags;
+} task_info_t;
+
+static const char filter_name[] = "FilterRegTest";
+static const char filtermanager_name[] = "FilterManager";
+
+static int registered = 0;
+static int filtermanager_available = 0;
+static int registered_task_handle = 0;
+static void *registered_pw = NULL;
+
+/*******************************************************************
+ Function:      task_name
+ Description:   Resolve a task handle to a printable name
+ Parameters:    task_handle = Handle to resolve
+                buffer = Buffer for hexadecimal fallback
+                buffer_size = Size of the buffer
+ Returns:       Pointer to task name or hexadecimal text
+ ******************************************************************/
+static const char *task_name(int task_handle, char *buffer, size_t buffer_size)
+{
+    _kernel_oserror *err;
+    char *name;
+
+    err = _swix(TaskManager_TaskNameFromHandle, _IN(0) | _OUT(0),
+                task_handle, &name);
+    if (err) {
+        (void)buffer_size;
+        sprintf(buffer, "%08X", task_handle);
+        return buffer;
+    }
+
+    return name;
+}
+
+/*******************************************************************
+ Function:      find_task_handle
+ Description:   Find a task handle suitable for PostIcon registration
+ Parameters:    none
+ Returns:       Task handle, or 0 if none found
+ ******************************************************************/
+static int find_task_handle(void)
+{
+    _kernel_oserror *err;
+    task_info_t task;
+    int context;
+    void *unused;
+    int unused_bytes;
+
+    task.task_handle = 0;
+    task.task_name = NULL;
+    task.memory_k = 0;
+    task.flags = 0;
+
+    err = _swix(TaskManager_EnumerateTasks,
+                _INR(0, 2) | _OUT(0) | _OUT(1) | _OUT(2),
+                0, &task, sizeof(task),
+                &context, &unused, &unused_bytes);
+    if (err) {
+        return 0;
+    }
+
+    (void)context;
+    (void)unused;
+    (void)unused_bytes;
+
+    return task.task_handle;
+}
+
+/*******************************************************************
+ Function:      filtermanager_present
+ Description:   Check whether FilterManager is currently loaded
+ Parameters:    none
+ Returns:       1 if the module is present, or 0 otherwise
+ ******************************************************************/
+static int filtermanager_present(void)
+{
+    _kernel_oserror *err;
+    int module_number;
+    int instance_number;
+    void *module_code;
+    void *private_word;
+    char *postfix;
+
+    err = _swix(OS_Module,
+                _INR(0, 1) | _OUT(1) | _OUT(2) | _OUT(3) | _OUT(4) | _OUT(5),
+                ModHandReason_LookupName, filtermanager_name,
+                &module_number, &instance_number, &module_code,
+                &private_word, &postfix);
+    if (err) {
+        return 0;
+    }
+
+    (void)module_number;
+    (void)instance_number;
+    (void)module_code;
+    (void)private_word;
+    (void)postfix;
+
+    return 1;
+}
+
+/*******************************************************************
+ Function:      register_filter
+ Description:   Register the test PostIcon filter
+ Parameters:    pw = Private word to associate with the registration
+ Returns:       NULL for success, or an error block on failure
+ ******************************************************************/
+static _kernel_oserror *register_filter(void *pw)
+{
+    _kernel_oserror *err;
+    int task_handle;
+
+    if (registered) {
+        return NULL;
+    }
+
+    task_handle = find_task_handle();
+    err = _swix(XFilter_RegisterPostIconFilter,
+                _INR(0, 3),
+                filter_name, TestFilter_Entry, pw, task_handle);
+    if (err) {
+        return err;
+    }
+
+    registered = 1;
+    registered_task_handle = task_handle;
+    registered_pw = pw;
+
+    return NULL;
+}
+
+/*******************************************************************
+ Function:      deregister_filter
+ Description:   Remove the test PostIcon filter if registered
+ Parameters:    none
+ Returns:       NULL for success, or an error block on failure
+ ******************************************************************/
+static _kernel_oserror *deregister_filter(void)
+{
+    _kernel_oserror *err;
+
+    if (!registered) {
+        return NULL;
+    }
+
+    err = _swix(XFilter_DeRegisterPostIconFilter,
+                _INR(0, 3),
+                filter_name, TestFilter_Entry, registered_pw,
+                registered_task_handle);
+    if (err) {
+        return err;
+    }
+
+    registered = 0;
+    registered_task_handle = 0;
+    registered_pw = NULL;
+
+    return NULL;
+}
+
+/*******************************************************************
+ Function:      Mod_Init
+ Description:   Initialise the test module and register if possible
+ Parameters:    tail = Command tail
+                podule_base = Podule base address
+                pw = Private word for the module
+ Returns:       NULL or an error block
+ ******************************************************************/
+_kernel_oserror *Mod_Init(const char *tail, int podule_base, void *pw)
+{
+    (void)tail;
+    (void)podule_base;
+
+    registered = 0;
+    registered_task_handle = 0;
+    registered_pw = NULL;
+    filtermanager_available = filtermanager_present();
+
+    if (filtermanager_available) {
+        return register_filter(pw);
+    }
+
+    return NULL;
+}
+
+/*******************************************************************
+ Function:      Mod_Final
+ Description:   Finalise the test module and remove any registration
+ Parameters:    fatal = Fatal flag
+                podule_base = Podule base address
+                pw = Private word for the module
+ Returns:       NULL or an error block
+ ******************************************************************/
+_kernel_oserror *Mod_Final(int fatal, int podule_base, void *pw)
+{
+    (void)fatal;
+    (void)podule_base;
+    (void)pw;
+
+    if (filtermanager_available) {
+        return deregister_filter();
+    }
+
+    return NULL;
+}
+
+/*******************************************************************
+ Function:      Mod_Service
+ Description:   Watch for FilterManager lifecycle services
+ Parameters:    service_no = Service number
+                r = Register block
+                pw = Private word for the module
+ Returns:       none
+ ******************************************************************/
+void Mod_Service(int service_no, _kernel_swi_regs *r, void *pw)
+{
+    (void)r;
+
+    if (service_no == Service_FilterManagerInstalled) {
+        filtermanager_available = 1;
+        (void)register_filter(pw);
+    } else if (service_no == Service_FilterManagerDying) {
+        filtermanager_available = 0;
+        registered = 0;
+        registered_task_handle = 0;
+        registered_pw = NULL;
+    }
+}
+
+/*******************************************************************
+ Function:      Mod_Command
+ Description:   Report test registration status
+ Parameters:    arg_string = Command arguments
+                argc = Argument count
+                cmd_no = Command number
+                pw = Private word for the module
+ Returns:       NULL or an error block
+ ******************************************************************/
+_kernel_oserror *Mod_Command(const char *arg_string, int argc, int cmd_no, void *pw)
+{
+    char buffer[16];
+
+    (void)arg_string;
+    (void)argc;
+    (void)cmd_no;
+    (void)pw;
+
+    if (!registered) {
+        return Err_NotRegistered;
+    }
+
+    printf("FilterRegTest registered for task %s\n",
+           task_name(registered_task_handle, buffer, sizeof(buffer)));
+    return NULL;
+}
+
+/*******************************************************************
+ Function:      TestFilter_Handler
+ Description:   Dummy filter routine used for registration tests
+ Parameters:    r = Register block
+                pw = Private word for the module
+ Returns:       NULL
+ ******************************************************************/
+_kernel_oserror *TestFilter_Handler(_kernel_swi_regs *r, void *pw)
+{
+    (void)r;
+    (void)pw;
+
+    return NULL;
+}

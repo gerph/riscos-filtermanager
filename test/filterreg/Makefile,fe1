@@ -1,0 +1,31 @@
+#!/usr/bin/env riscos-amu -f
+# Makefile for FilterRegTest
+#
+
+COMPONENT  = FilterRegTest
+
+INITTARGET = inittarget
+CLEANTARGET = cleantarget
+
+EXPORTS    =
+INCLUDES   =
+LIBS       =
+CDEFINES   =
+
+OBJS       = o.modhead \
+             o.module
+
+FORTIFY    = no
+
+include CModule
+
+$(OZDIR).module: h.modhead
+
+cleantarget:
+           ${DESTROY} h.modhead
+
+inittarget:
+           ${MKDIR} h
+
+#---------------------------------------------------------------------------
+# Dynamic dependencies:

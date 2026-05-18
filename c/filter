@@ -1,5 +1,4 @@
 #include <stdlib.h>
-#include <string.h>
 #include <stdio.h>
 #include "kernel.h"
 #include "swis.h"
@@ -8,14 +7,20 @@
 
 filter_state_t global_state = { NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
-static char *my_strdup(const char *s)
+static const char *task_name(int task_handle, char *buffer, size_t buffer_size)
 {
-    size_t len = strlen(s) + 1;
-    char *new_s = malloc(len);
-    if (new_s) {
-        memcpy(new_s, s, len);
+    _kernel_oserror *err;
+    char *name;
+
+    err = _swix(TaskManager_TaskNameFromHandle, _IN(0) | _OUT(0),
+                task_handle, &name);
+    if (err) {
+        (void)buffer_size;
+        sprintf(buffer, "%08X", task_handle);
+        return buffer;
     }
-    return new_s;
+
+    return name;
 }
 
 _kernel_oserror *filter_register_pre(const char *name, void (*routine)(void), void *r12, int task)
@@ -25,7 +30,7 @@ _kernel_oserror *filter_register_pre(const char *name, void (*routine)(void), vo
 
     curr = global_state.pre_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0 && curr->task_handle == task) {
+        if (curr->name == name && curr->task_handle == task) {
             return Err_FilterAlreadyRegistered;
         }
         curr = curr->next;
@@ -36,12 +41,7 @@ _kernel_oserror *filter_register_pre(const char *name, void (*routine)(void), vo
         return Err_NoMoreRoomForFilters;
     }
 
-    new_filter->name = my_strdup(name);
-    if (!new_filter->name) {
-        free(new_filter);
-        return Err_NoMoreRoomForFilters;
-    }
-
+    new_filter->name = name;
     new_filter->routine = routine;
     new_filter->r12 = r12;
     new_filter->task_handle = task;
@@ -58,7 +58,7 @@ _kernel_oserror *filter_register_post(const char *name, void (*routine)(void), v
 
     curr = global_state.post_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0 && curr->task_handle == task) {
+        if (curr->name == name && curr->task_handle == task) {
             return Err_FilterAlreadyRegistered;
         }
         curr = curr->next;
@@ -69,12 +69,7 @@ _kernel_oserror *filter_register_post(const char *name, void (*routine)(void), v
         return Err_NoMoreRoomForFilters;
     }
 
-    new_filter->name = my_strdup(name);
-    if (!new_filter->name) {
-        free(new_filter);
-        return Err_NoMoreRoomForFilters;
-    }
-
+    new_filter->name = name;
     new_filter->routine = routine;
     new_filter->r12 = r12;
     new_filter->task_handle = task;
@@ -92,7 +87,7 @@ _kernel_oserror *filter_register_rect(const char *name, void (*routine)(void), v
 
     curr = global_state.rect_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0 && curr->task_handle == task) {
+        if (curr->name == name && curr->task_handle == task) {
             return Err_FilterAlreadyRegistered;
         }
         curr = curr->next;
@@ -103,12 +98,7 @@ _kernel_oserror *filter_register_rect(const char *name, void (*routine)(void), v
         return Err_NoMoreRoomForFilters;
     }
 
-    new_filter->name = my_strdup(name);
-    if (!new_filter->name) {
-        free(new_filter);
-        return Err_NoMoreRoomForFilters;
-    }
-
+    new_filter->name = name;
     new_filter->routine = routine;
     new_filter->r12 = r12;
     new_filter->task_handle = task;
@@ -125,7 +115,7 @@ _kernel_oserror *filter_register_copy(const char *name, void (*routine)(void), v
 
     curr = global_state.copy_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0) {
+        if (curr->name == name) {
             return Err_FilterAlreadyRegistered;
         }
         curr = curr->next;
@@ -136,12 +126,7 @@ _kernel_oserror *filter_register_copy(const char *name, void (*routine)(void), v
         return Err_NoMoreRoomForFilters;
     }
 
-    new_filter->name = my_strdup(name);
-    if (!new_filter->name) {
-        free(new_filter);
-        return Err_NoMoreRoomForFilters;
-    }
-
+    new_filter->name = name;
     new_filter->routine = routine;
     new_filter->r12 = r12;
     new_filter->next = global_state.copy_filters;
@@ -157,7 +142,7 @@ _kernel_oserror *filter_register_post_rect(const char *name, void (*routine)(voi
 
     curr = global_state.post_rect_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0 && curr->task_handle == task) {
+        if (curr->name == name && curr->task_handle == task) {
             return Err_FilterAlreadyRegistered;
         }
         curr = curr->next;
@@ -168,12 +153,7 @@ _kernel_oserror *filter_register_post_rect(const char *name, void (*routine)(voi
         return Err_NoMoreRoomForFilters;
     }
 
-    new_filter->name = my_strdup(name);
-    if (!new_filter->name) {
-        free(new_filter);
-        return Err_NoMoreRoomForFilters;
-    }
-
+    new_filter->name = name;
     new_filter->routine = routine;
     new_filter->r12 = r12;
     new_filter->task_handle = task;
@@ -190,7 +170,7 @@ _kernel_oserror *filter_register_post_icon(const char *name, void (*routine)(voi
 
     curr = global_state.post_icon_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0 && curr->task_handle == task) {
+        if (curr->name == name && curr->task_handle == task) {
             return Err_FilterAlreadyRegistered;
         }
         curr = curr->next;
@@ -201,12 +181,7 @@ _kernel_oserror *filter_register_post_icon(const char *name, void (*routine)(voi
         return Err_NoMoreRoomForFilters;
     }
 
-    new_filter->name = my_strdup(name);
-    if (!new_filter->name) {
-        free(new_filter);
-        return Err_NoMoreRoomForFilters;
-    }
-
+    new_filter->name = name;
     new_filter->routine = routine;
     new_filter->r12 = r12;
     new_filter->task_handle = task;
@@ -251,7 +226,7 @@ _kernel_oserror *filter_deregister_pre(const char *name, void (*routine)(void), 
 
     curr = global_state.pre_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0 && 
+        if (curr->name == name &&
             curr->routine == routine && 
             curr->r12 == r12 && 
             curr->task_handle == task) {
@@ -261,7 +236,6 @@ _kernel_oserror *filter_deregister_pre(const char *name, void (*routine)(void), 
             } else {
                 global_state.pre_filters = curr->next;
             }
-            free(curr->name);
             free(curr);
             return NULL;
         }
@@ -279,7 +253,7 @@ _kernel_oserror *filter_deregister_post(const char *name, void (*routine)(void),
 
     curr = global_state.post_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0 && 
+        if (curr->name == name &&
             curr->routine == routine && 
             curr->r12 == r12 && 
             curr->task_handle == task && 
@@ -290,7 +264,6 @@ _kernel_oserror *filter_deregister_post(const char *name, void (*routine)(void),
             } else {
                 global_state.post_filters = curr->next;
             }
-            free(curr->name);
             free(curr);
             return NULL;
         }
@@ -308,7 +281,7 @@ _kernel_oserror *filter_deregister_rect(const char *name, void (*routine)(void),
 
     curr = global_state.rect_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0 && 
+        if (curr->name == name &&
             curr->routine == routine && 
             curr->r12 == r12 && 
             curr->task_handle == task) {
@@ -318,7 +291,6 @@ _kernel_oserror *filter_deregister_rect(const char *name, void (*routine)(void),
             } else {
                 global_state.rect_filters = curr->next;
             }
-            free(curr->name);
             free(curr);
             return NULL;
         }
@@ -336,7 +308,7 @@ _kernel_oserror *filter_deregister_copy(const char *name, void (*routine)(void),
 
     curr = global_state.copy_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0 && 
+        if (curr->name == name &&
             curr->routine == routine && 
             curr->r12 == r12) {
             
@@ -345,7 +317,6 @@ _kernel_oserror *filter_deregister_copy(const char *name, void (*routine)(void),
             } else {
                 global_state.copy_filters = curr->next;
             }
-            free(curr->name);
             free(curr);
             return NULL;
         }
@@ -363,7 +334,7 @@ _kernel_oserror *filter_deregister_post_rect(const char *name, void (*routine)(v
 
     curr = global_state.post_rect_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0 && 
+        if (curr->name == name &&
             curr->routine == routine && 
             curr->r12 == r12 && 
             curr->task_handle == task) {
@@ -373,7 +344,6 @@ _kernel_oserror *filter_deregister_post_rect(const char *name, void (*routine)(v
             } else {
                 global_state.post_rect_filters = curr->next;
             }
-            free(curr->name);
             free(curr);
             return NULL;
         }
@@ -391,7 +361,7 @@ _kernel_oserror *filter_deregister_post_icon(const char *name, void (*routine)(v
 
     curr = global_state.post_icon_filters;
     while (curr) {
-        if (strcmp(curr->name, name) == 0 && 
+        if (curr->name == name &&
             curr->routine == routine && 
             curr->r12 == r12 && 
             curr->task_handle == task) {
@@ -401,7 +371,6 @@ _kernel_oserror *filter_deregister_post_icon(const char *name, void (*routine)(v
             } else {
                 global_state.post_icon_filters = curr->next;
             }
-            free(curr->name);
             free(curr);
             return NULL;
         }
@@ -448,7 +417,6 @@ void filter_cleanup(void)
     pre = global_state.pre_filters;
     while (pre) {
         pre_filter_t *next = pre->next;
-        free(pre->name);
         free(pre);
         pre = next;
     }
@@ -457,7 +425,6 @@ void filter_cleanup(void)
     post = global_state.post_filters;
     while (post) {
         post_filter_t *next = post->next;
-        free(post->name);
         free(post);
         post = next;
     }
@@ -466,7 +433,6 @@ void filter_cleanup(void)
     rect = global_state.rect_filters;
     while (rect) {
         rect_filter_t *next = rect->next;
-        free(rect->name);
         free(rect);
         rect = next;
     }
@@ -475,7 +441,6 @@ void filter_cleanup(void)
     copy = global_state.copy_filters;
     while (copy) {
         copy_filter_t *next = copy->next;
-        free(copy->name);
         free(copy);
         copy = next;
     }
@@ -484,7 +449,6 @@ void filter_cleanup(void)
     prect = global_state.post_rect_filters;
     while (prect) {
         post_rect_filter_t *next = prect->next;
-        free(prect->name);
         free(prect);
         prect = next;
     }
@@ -493,7 +457,6 @@ void filter_cleanup(void)
     picon = global_state.post_icon_filters;
     while (picon) {
         post_icon_filter_t *next = picon->next;
-        free(picon->name);
         free(picon);
         picon = next;
     }
@@ -518,13 +481,16 @@ void filter_list(void)
     post_rect_filter_t *prect = global_state.post_rect_filters;
     post_icon_filter_t *picon = global_state.post_icon_filters;
     icon_border_filter_t *iborder = global_state.icon_border_filters;
+    char task_buffer[16];
 
     printf("Pre-filters:\n");
     if (!pre) printf("  None\n");
     else {
         printf("  %-20s %-8s %-8s %-8s\n", "Name", "Routine", "R12", "Task");
         while (pre) {
-            printf("  %-20s %08X %08X %08X\n", pre->name, (unsigned int)pre->routine, (unsigned int)pre->r12, pre->task_handle);
+            printf("  %-20s %08X %08X %-8s\n", pre->name, (unsigned int)pre->routine,
+                   (unsigned int)pre->r12,
+                   task_name(pre->task_handle, task_buffer, sizeof(task_buffer)));
             pre = pre->next;
         }
     }
@@ -534,7 +500,10 @@ void filter_list(void)
     else {
         printf("  %-20s %-8s %-8s %-8s %-8s\n", "Name", "Routine", "R12", "Task", "Mask");
         while (post) {
-            printf("  %-20s %08X %08X %08X %08X\n", post->name, (unsigned int)post->routine, (unsigned int)post->r12, post->task_handle, post->event_mask);
+            printf("  %-20s %08X %08X %-8s %08X\n", post->name,
+                   (unsigned int)post->routine, (unsigned int)post->r12,
+                   task_name(post->task_handle, task_buffer, sizeof(task_buffer)),
+                   post->event_mask);
             post = post->next;
         }
     }
@@ -544,7 +513,9 @@ void filter_list(void)
     else {
         printf("  %-20s %-8s %-8s %-8s\n", "Name", "Routine", "R12", "Task");
         while (rect) {
-            printf("  %-20s %08X %08X %08X\n", rect->name, (unsigned int)rect->routine, (unsigned int)rect->r12, rect->task_handle);
+            printf("  %-20s %08X %08X %-8s\n", rect->name, (unsigned int)rect->routine,
+                   (unsigned int)rect->r12,
+                   task_name(rect->task_handle, task_buffer, sizeof(task_buffer)));
             rect = rect->next;
         }
     }
@@ -564,7 +535,9 @@ void filter_list(void)
     else {
         printf("  %-20s %-8s %-8s %-8s\n", "Name", "Routine", "R12", "Task");
         while (prect) {
-            printf("  %-20s %08X %08X %08X\n", prect->name, (unsigned int)prect->routine, (unsigned int)prect->r12, prect->task_handle);
+            printf("  %-20s %08X %08X %-8s\n", prect->name,
+                   (unsigned int)prect->routine, (unsigned int)prect->r12,
+                   task_name(prect->task_handle, task_buffer, sizeof(task_buffer)));
             prect = prect->next;
         }
     }
@@ -574,7 +547,9 @@ void filter_list(void)
     else {
         printf("  %-20s %-8s %-8s %-8s\n", "Name", "Routine", "R12", "Task");
         while (picon) {
-            printf("  %-20s %08X %08X %08X\n", picon->name, (unsigned int)picon->routine, (unsigned int)picon->r12, picon->task_handle);
+            printf("  %-20s %08X %08X %-8s\n", picon->name,
+                   (unsigned int)picon->routine, (unsigned int)picon->r12,
+                   task_name(picon->task_handle, task_buffer, sizeof(task_buffer)));
             picon = picon->next;
         }
     }
