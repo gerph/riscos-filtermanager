@@ -8,3 +8,12 @@ oz64/*
 rm/*
 rm32/*
 rm64/*
+**/aof/*
+**/aof32/*
+**/oz/*
+**/oz32/*
+**/oz64/*
+**/rm/*
+**/rm32/*
+**/rm64/*
+test/filterreg/h/modhead
