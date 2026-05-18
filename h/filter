@@ -4,7 +4,7 @@
 #include "kernel.h"
 
 typedef struct pre_filter {
-    char *name;
+    const char *name;
     void (*routine)(void);
     void *r12;
     int task_handle;
@@ -12,7 +12,7 @@ typedef struct pre_filter {
 } pre_filter_t;
 
 typedef struct post_filter {
-    char *name;
+    const char *name;
     void (*routine)(void);
     void *r12;
     int task_handle;
@@ -21,7 +21,7 @@ typedef struct post_filter {
 } post_filter_t;
 
 typedef struct rect_filter {
-    char *name;
+    const char *name;
     void (*routine)(void);
     void *r12;
     int task_handle;
@@ -29,14 +29,14 @@ typedef struct rect_filter {
 } rect_filter_t;
 
 typedef struct copy_filter {
-    char *name;
+    const char *name;
     void (*routine)(void);
     void *r12;
     struct copy_filter *next;
 } copy_filter_t;
 
 typedef struct post_rect_filter {
-    char *name;
+    const char *name;
     void (*routine)(void);
     void *r12;
     int task_handle;
@@ -44,7 +44,7 @@ typedef struct post_rect_filter {
 } post_rect_filter_t;
 
 typedef struct post_icon_filter {
-    char *name;
+    const char *name;
     void (*routine)(void);
     void *r12;
     int task_handle;
