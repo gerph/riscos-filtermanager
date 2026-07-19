@@ -58,7 +58,7 @@ jobs:
       # Tests - loading to check that it starts up
       - echo
       - echo *** Load the modules and exercise filter registration ***
-      - RMLoad rm32.FilterManager
+      - RMLoad rm32.FilterManager2
       - RMLoad test.filterreg.rm32.FilterRegTest
       - FilterRegTestStatus
       - Filters

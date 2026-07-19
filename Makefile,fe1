@@ -5,7 +5,7 @@
 #
 # Program specific options:
 #
-COMPONENT  = FilterManager
+COMPONENT  = FilterManager2
 
 # Specifies additional targets for startup
 INITTARGET = inittarget
