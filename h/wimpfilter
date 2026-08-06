@@ -1,0 +1,52 @@
+/*******************************************************************
+ * File:        wimpfilter
+ * Purpose:     Definitions for the Wimp Filter system
+ * Author:      Gerph
+ * Date:        06 Aug 2026
+ ******************************************************************/
+
+#ifndef WIMPFILTER_H
+#define WIMPFILTER_H
+
+#include "kernel.h"
+
+/* Wimp Filter definitions */
+
+/* Reason codes passed to Wimp_RegisterFilter */
+
+#define WimpFilter_PrePoll              0
+#define WimpFilter_PostPoll             1
+#define WimpFilter_BlockCopy            2
+#define WimpFilter_GetRectangle         3
+#define WimpFilter_PostGetRectangle     4
+#define WimpFilter_PostIconGetRectangle 5
+#define WimpFilter_IconBorder           6
+#define WimpFilter_MAX                  7
+
+/* Reason codes passed to Wimp_RegisterFilter 6, in R9 */
+#define WimpFilter_IconBorder_Draw      0   /* draw the border */
+#define WimpFilter_IconBorder_Size      1   /* update the box to inset by the border */
+#define WimpFilter_IconBorder_Fill      2   /* fill the border */
+#define WimpFilter_IconBorder_Colour    3   /* set up colours for border */
+#define WimpFilter_IconBorder_State     4   /* read the state for rendering border */
+#define WimpFilter_IconBorder_MAX       5
+
+
+/* Flags for WimpFilter_IconBorder_State */
+#define WimpFilterIBS_ChangesShape      (1<<0)  /* the border changes in shape so needs 'full' redraws */
+#define WimpFilterIBS_Highlightable     (1<<1)  /* the border is highlightable */
+
+
+
+/*************************************************** Gerph *********
+ Function:      wimp_registerfilter
+ Description:   Register the filter handlers
+ Parameters:    filter_type = the filter type (WimpFilter_*)
+                func -> the function to register
+                ws = the workspace value to pass in R12
+ Returns:       none
+ ******************************************************************/
+_kernel_oserror *wimp_reisterfilter(int filter_type, void *func, void *ws);
+
+
+#endif

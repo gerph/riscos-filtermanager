@@ -1,0 +1,52 @@
+/*******************************************************************
+ * File:        dispatch
+ * Purpose:     Dispatch the handlers for the filters, from the Wimp
+ * Author:      Gerph
+ * Date:        06 Aug 2026
+ ******************************************************************/
+
+#include "modhead.h"
+
+
+_kernel_oserror *Filter_PrePoll_Handler(_kernel_swi_regs *regs, void *pw)
+{
+    /* FIXME: Call all the filters for PrePoll */
+}
+
+
+_kernel_oserror *Filter_PostPoll_Handler(_kernel_swi_regs *regs, void *pw)
+{
+    /* FIXME: Call all the filters for PostPoll */
+}
+
+
+_kernel_oserror *Filter_BlockCopy_Handler(_kernel_swi_regs *regs, void *pw)
+{
+    /* FIXME: Call all the filters for BlockCopy */
+}
+
+
+_kernel_oserror *Filter_GetRectangle_Handler(_kernel_swi_regs *regs, void *pw)
+{
+    /* FIXME: Call all the filters for GetRectangle */
+}
+
+
+_kernel_oserror *Filter_PostGetRectangle_Handler(_kernel_swi_regs *regs, void *pw)
+{
+    /* FIXME: Call all the filters for PostGetRectangle */
+}
+
+
+_kernel_oserror *Filter_PostIconGetRectangle_Handler(_kernel_swi_regs *regs, void *pw)
+{
+    /* FIXME: Call all the filters for PostIconGetRectangle */
+}
+
+
+_kernel_oserror *Filter_IconBorder_Handler(_kernel_swi_regs *regs, void *pw)
+{
+    /* FIXME: Call all the filters for IconBorder */
+}
+
+

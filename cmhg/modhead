@@ -59,7 +59,15 @@ initialisation-code: Mod_Init
 
 finalisation-code: Mod_Final
 
-generic-veneers: StartupCallback_Entry/StartupCallback_Handler
+generic-veneers: StartupCallback_Entry/StartupCallback_Handler,
+                 Filter_PrePoll_Entry/Filter_PrePoll_Handler,
+                 Filter_PostPoll_Entry/Filter_PostPoll_Handler,
+                 Filter_BlockCopy_Entry/Filter_BlockCopy_Handler,
+                 Filter_GetRectangle_Entry/Filter_GetRectangle_Handler,
+                 Filter_PostGetRectangle_Entry/Filter_PostGetRectangle_Handler,
+                 Filter_PostIconGetRectangle_Entry/Filter_PostIconGetRectangle_Handler,
+                 Filter_IconBorder_Entry/Filter_IconBorder_Handler
+
 
 command-keyword-table: Mod_Command
    Filters(min-args: 0, max-args: 0, help-text: "*Filters lists the registered filters.", invalid-syntax: "Syntax: *Filters")

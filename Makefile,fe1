@@ -35,9 +35,12 @@ LIBS       =
 CDEFINES   =
 
 # Objects to build, using the format o.<name> (will be varied for build type)
-OBJS       = o.modhead \
-			 o.module \
-			 o.filter
+OBJS       = o.dispatch \
+             o.filter \
+             o.modhead \
+             o.module \
+             o.wimpfilter \
+
 
 # By default we don't build Fortify in.
 # To include fortify in your module, #include "fortify.h" at the top of your C files
@@ -48,8 +51,10 @@ FORTIFY    = no
 include CModule
 
 # Additional dependencies
-$(OZDIR).module: h.modhead h.filter
-$(OZDIR).filter: h.modhead h.filter
+$(OZDIR).dispatch: h.modhead
+$(OZDIR).filter: h.filter
+$(OZDIR).module: h.modhead
+$(OZDIR).wimpfilter: h.wimpfilter
 
 # Export rules
 # For any files you export with EXPORTS you may need to include an

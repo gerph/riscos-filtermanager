@@ -1,0 +1,27 @@
+/*******************************************************************
+ * File:        wimpfilter
+ * Purpose:     Definitions for the Wimp Filter system
+ * Author:      Gerph
+ * Date:        06 Aug 2026
+ ******************************************************************/
+
+#ifndef WIMPFILTER_H
+#define WIMPFILTER_H
+
+#include "wimpfilter.h"
+#include "swis.h"
+
+/*************************************************** Gerph *********
+ Function:      wimp_registerfilter
+ Description:   Register the filter handlers
+ Parameters:    filter_type = the filter type (WimpFilter_*)
+                func -> the function to register
+                ws = the workspace value to pass in R12
+ Returns:       none
+ ******************************************************************/
+_kernel_oserror *wimp_reisterfilter(int filter_type, void *func, void *ws)
+{
+    return _swix(Wimp_RegisterFilter, _INR(0, 2), filter_type, func, ws);
+}
+
+#endif
