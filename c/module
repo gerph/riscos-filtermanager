@@ -12,6 +12,7 @@
 #include "swis.h"
 #include "modhead.h"
 #include "filter.h"
+#include "wimpfilter.h"
 
 /* #define DEBUG */
 
@@ -22,6 +23,7 @@
 #endif
 
 #define Service_WimpCloseDown 0x53
+#define Service_WimpRegisterFilters 0x86
 #define Service_FilterManagerInstalled 0x87
 #define Service_FilterManagerDying 0x88
 
@@ -69,6 +71,11 @@ _kernel_oserror *Mod_Final(int fatal, int podule_base, void *pw)
     /* Announce we are dying BEFORE shutting down systems */
     announce(0);
 
+    /* Release our filter handlers from the Wimp before freeing the lists
+       they refer to, so that a stray call from the Wimp cannot land on
+       memory we have already freed. */
+    wimpfilter_release_all();
+
     filter_cleanup();
 
     return NULL;
@@ -91,50 +98,139 @@ _kernel_oserror *StartupCallback_Handler(_kernel_swi_regs *r, void *pw)
  **************************************************************************/
 _kernel_oserror *Mod_SWI(int swi_no, _kernel_swi_regs *r, void *pw)
 {
-    (void)pw;
-
     switch (swi_no) {
         case Filter_RegisterPreFilter - Filter_00:
-            return filter_register_pre((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+        {
+            int was_empty = (global_state.pre_filters == NULL);
+            _kernel_oserror *err = filter_register_pre((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+            if (!err && was_empty) {
+                err = wimpfilter_register(WimpFilter_PrePoll, pw);
+            }
+            return err;
+        }
 
         case Filter_RegisterPostFilter - Filter_00:
-            return filter_register_post((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3], r->r[4]);
+        {
+            int was_empty = (global_state.post_filters == NULL);
+            _kernel_oserror *err = filter_register_post((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3], r->r[4]);
+            if (!err && was_empty) {
+                err = wimpfilter_register(WimpFilter_PostPoll, pw);
+            }
+            return err;
+        }
 
         case Filter_DeRegisterPreFilter - Filter_00:
-            return filter_deregister_pre((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+        {
+            _kernel_oserror *err = filter_deregister_pre((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+            if (!err && global_state.pre_filters == NULL) {
+                err = wimpfilter_deregister(WimpFilter_PrePoll);
+            }
+            return err;
+        }
 
         case Filter_DeRegisterPostFilter - Filter_00:
-            return filter_deregister_post((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3], r->r[4]);
+        {
+            _kernel_oserror *err = filter_deregister_post((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3], r->r[4]);
+            if (!err && global_state.post_filters == NULL) {
+                err = wimpfilter_deregister(WimpFilter_PostPoll);
+            }
+            return err;
+        }
 
         case Filter_RegisterRectFilter - Filter_00:
-            return filter_register_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+        {
+            int was_empty = (global_state.rect_filters == NULL);
+            _kernel_oserror *err = filter_register_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+            if (!err && was_empty) {
+                err = wimpfilter_register(WimpFilter_GetRectangle, pw);
+            }
+            return err;
+        }
 
         case Filter_DeRegisterRectFilter - Filter_00:
-            return filter_deregister_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+        {
+            _kernel_oserror *err = filter_deregister_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+            if (!err && global_state.rect_filters == NULL) {
+                err = wimpfilter_deregister(WimpFilter_GetRectangle);
+            }
+            return err;
+        }
 
         case Filter_RegisterCopyFilter - Filter_00:
-            return filter_register_copy((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2]);
+        {
+            int was_empty = (global_state.copy_filters == NULL);
+            _kernel_oserror *err = filter_register_copy((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2]);
+            if (!err && was_empty) {
+                err = wimpfilter_register(WimpFilter_BlockCopy, pw);
+            }
+            return err;
+        }
 
         case Filter_DeRegisterCopyFilter - Filter_00:
-            return filter_deregister_copy((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2]);
+        {
+            _kernel_oserror *err = filter_deregister_copy((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2]);
+            if (!err && global_state.copy_filters == NULL) {
+                err = wimpfilter_deregister(WimpFilter_BlockCopy);
+            }
+            return err;
+        }
 
         case Filter_RegisterPostRectFilter - Filter_00:
-            return filter_register_post_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+        {
+            int was_empty = (global_state.post_rect_filters == NULL);
+            _kernel_oserror *err = filter_register_post_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+            if (!err && was_empty) {
+                err = wimpfilter_register(WimpFilter_PostGetRectangle, pw);
+            }
+            return err;
+        }
 
         case Filter_DeRegisterPostRectFilter - Filter_00:
-            return filter_deregister_post_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+        {
+            _kernel_oserror *err = filter_deregister_post_rect((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+            if (!err && global_state.post_rect_filters == NULL) {
+                err = wimpfilter_deregister(WimpFilter_PostGetRectangle);
+            }
+            return err;
+        }
 
         case Filter_RegisterPostIconFilter - Filter_00:
-            return filter_register_post_icon((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+        {
+            int was_empty = (global_state.post_icon_filters == NULL);
+            _kernel_oserror *err = filter_register_post_icon((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+            if (!err && was_empty) {
+                err = wimpfilter_register(WimpFilter_PostIconGetRectangle, pw);
+            }
+            return err;
+        }
 
         case Filter_DeRegisterPostIconFilter - Filter_00:
-            return filter_deregister_post_icon((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+        {
+            _kernel_oserror *err = filter_deregister_post_icon((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+            if (!err && global_state.post_icon_filters == NULL) {
+                err = wimpfilter_deregister(WimpFilter_PostIconGetRectangle);
+            }
+            return err;
+        }
 
         case Filter_RegisterIconBorderFilter - Filter_00:
-            return filter_register_icon_border((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+        {
+            int was_empty = (global_state.icon_border_filters == NULL);
+            _kernel_oserror *err = filter_register_icon_border((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2], r->r[3]);
+            if (!err && was_empty) {
+                err = wimpfilter_register(WimpFilter_IconBorder, pw);
+            }
+            return err;
+        }
 
         case Filter_DeRegisterIconBorderFilter - Filter_00:
-            return filter_deregister_icon_border((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2]);
+        {
+            _kernel_oserror *err = filter_deregister_icon_border((const char *)r->r[0], (void (*)(void))r->r[1], (void *)r->r[2]);
+            if (!err && global_state.icon_border_filters == NULL) {
+                err = wimpfilter_deregister(WimpFilter_IconBorder);
+            }
+            return err;
+        }
 
         default:
             return error_BAD_SWI;
@@ -160,7 +256,15 @@ _kernel_oserror *Mod_Command(const char *arg_string, int argc, int cmd_no, void 
  **************************************************************************/
 void Mod_Service(int service_no, _kernel_swi_regs *r, void *pw)
 {
-    (void)pw;
+    if (service_no == Service_WimpRegisterFilters) {
+        /* The Wimp has started (or restarted) and wants filter handlers
+           installed. Register any filter types we currently hold filters
+           for - there is nothing to do for types with empty lists. */
+        dprintf("Service_WimpRegisterFilters received\n");
+
+        wimpfilter_service_register(pw);
+        return;
+    }
 
     if (service_no == Service_WimpCloseDown) {
         int task_handle;
@@ -181,6 +285,9 @@ void Mod_Service(int service_no, _kernel_swi_regs *r, void *pw)
                     pre = global_state.pre_filters;
                 } else pre = pre->next;
             }
+            if (global_state.pre_filters == NULL) {
+                wimpfilter_deregister(WimpFilter_PrePoll);
+            }
 
             post = global_state.post_filters;
             while (post) {
@@ -188,6 +295,9 @@ void Mod_Service(int service_no, _kernel_swi_regs *r, void *pw)
                     filter_deregister_post(post->name, post->routine, post->r12, post->task_handle, post->event_mask);
                     post = global_state.post_filters;
                 } else post = post->next;
+            }
+            if (global_state.post_filters == NULL) {
+                wimpfilter_deregister(WimpFilter_PostPoll);
             }
 
             rect = global_state.rect_filters;
@@ -197,6 +307,9 @@ void Mod_Service(int service_no, _kernel_swi_regs *r, void *pw)
                     rect = global_state.rect_filters;
                 } else rect = rect->next;
             }
+            if (global_state.rect_filters == NULL) {
+                wimpfilter_deregister(WimpFilter_GetRectangle);
+            }
 
             prect = global_state.post_rect_filters;
             while (prect) {
@@ -205,6 +318,9 @@ void Mod_Service(int service_no, _kernel_swi_regs *r, void *pw)
                     prect = global_state.post_rect_filters;
                 } else prect = prect->next;
             }
+            if (global_state.post_rect_filters == NULL) {
+                wimpfilter_deregister(WimpFilter_PostGetRectangle);
+            }
 
             picon = global_state.post_icon_filters;
             while (picon) {
@@ -212,6 +328,9 @@ void Mod_Service(int service_no, _kernel_swi_regs *r, void *pw)
                     filter_deregister_post_icon(picon->name, picon->routine, picon->r12, picon->task_handle);
                     picon = global_state.post_icon_filters;
                 } else picon = picon->next;
+            }
+            if (global_state.post_icon_filters == NULL) {
+                wimpfilter_deregister(WimpFilter_PostIconGetRectangle);
             }
         }
     }

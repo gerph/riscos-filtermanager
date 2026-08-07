@@ -29,7 +29,8 @@ INCLUDES   =
 
 # Space separated list of libraries to link against, eg C:LibName.o.libLibName
 # (${CLIB} is implicit, unless NOCLIB = yes)
-LIBS       =
+# libAsm provides _callx, used by dispatch to call registered filters
+LIBS       = C:Asm.o.libAsm
 
 # Space separated list of defines to set, eg -DDEBUG
 CDEFINES   =
@@ -51,10 +52,10 @@ FORTIFY    = no
 include CModule
 
 # Additional dependencies
-$(OZDIR).dispatch: h.modhead
+$(OZDIR).dispatch: h.modhead h.filter
 $(OZDIR).filter: h.filter
-$(OZDIR).module: h.modhead
-$(OZDIR).wimpfilter: h.wimpfilter
+$(OZDIR).module: h.modhead h.wimpfilter
+$(OZDIR).wimpfilter: h.wimpfilter h.modhead h.filter
 
 # Export rules
 # For any files you export with EXPORTS you may need to include an

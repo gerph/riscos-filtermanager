@@ -5,23 +5,100 @@
  * Date:        06 Aug 2026
  ******************************************************************/
 
-#ifndef WIMPFILTER_H
-#define WIMPFILTER_H
+#include <stdio.h>
 
 #include "wimpfilter.h"
 #include "swis.h"
+#include "modhead.h"
+#include "filter.h"
 
-/*************************************************** Gerph *********
- Function:      wimp_registerfilter
- Description:   Register the filter handlers
- Parameters:    filter_type = the filter type (WimpFilter_*)
-                func -> the function to register
-                ws = the workspace value to pass in R12
- Returns:       none
- ******************************************************************/
-_kernel_oserror *wimp_reisterfilter(int filter_type, void *func, void *ws)
+/* #define DEBUG */
+
+#ifdef DEBUG
+#define dprintf if (1) printf
+#else
+#define dprintf if (0) printf
+#endif
+
+_kernel_oserror *wimp_registerfilter(int filter_type, void *func, void *ws)
 {
     return _swix(Wimp_RegisterFilter, _INR(0, 2), filter_type, func, ws);
 }
 
-#endif
+
+/* Our dispatch entries, one per WimpFilter_* type, indexed by filter_type.
+   These are the generic-veneer entry points declared in modhead.h (built
+   from the 'generic-veneers:' list in cmhg.modhead) - they are what we
+   hand to the Wimp so that it calls back into our own iterator, which in
+   turn walks the list of filters we have been asked to run on the
+   client's behalf. */
+static void (* const filter_entry[WimpFilter_MAX])(void) = {
+    Filter_PrePoll_Entry,
+    Filter_PostPoll_Entry,
+    Filter_BlockCopy_Entry,
+    Filter_GetRectangle_Entry,
+    Filter_PostGetRectangle_Entry,
+    Filter_PostIconGetRectangle_Entry,
+    Filter_IconBorder_Entry
+};
+
+
+_kernel_oserror *wimpfilter_register(int filter_type, void *pw)
+{
+    if (filter_type < 0 || filter_type >= WimpFilter_MAX) {
+        return Err_InvalidParameters;
+    }
+
+    dprintf("wimpfilter_register: type %d, entry %p, pw %p\n",
+            filter_type, (void *)filter_entry[filter_type], pw);
+
+    return wimp_registerfilter(filter_type, (void *)filter_entry[filter_type], pw);
+}
+
+
+_kernel_oserror *wimpfilter_deregister(int filter_type)
+{
+    if (filter_type < 0 || filter_type >= WimpFilter_MAX) {
+        return Err_InvalidParameters;
+    }
+
+    dprintf("wimpfilter_deregister: type %d\n", filter_type);
+
+    return wimp_registerfilter(filter_type, NULL, NULL);
+}
+
+
+void wimpfilter_service_register(void *pw)
+{
+    /* Register every filter type which currently has at least one filter
+       attached. This is used in response to Service_WimpRegisterFilters,
+       so a restarted Wimp does not need to be told about each filter
+       individually - we already hold the full lists. */
+    if (global_state.pre_filters)              wimpfilter_register(WimpFilter_PrePoll, pw);
+    if (global_state.post_filters)             wimpfilter_register(WimpFilter_PostPoll, pw);
+    if (global_state.copy_filters)             wimpfilter_register(WimpFilter_BlockCopy, pw);
+    if (global_state.rect_filters)             wimpfilter_register(WimpFilter_GetRectangle, pw);
+    if (global_state.post_rect_filters)        wimpfilter_register(WimpFilter_PostGetRectangle, pw);
+    if (global_state.post_icon_filters)        wimpfilter_register(WimpFilter_PostIconGetRectangle, pw);
+    if (global_state.icon_border_filters)      wimpfilter_register(WimpFilter_IconBorder, pw);
+}
+
+
+void wimpfilter_release_all(void)
+{
+    /* Only release the filter types we ourselves currently have
+       registered with the Wimp, ie those whose list is non-empty.
+       Wimp_RegisterFilter holds a single handler per type, not a
+       chain, so if we blindly deregistered every type regardless of
+       whether we held it, we could clear out a registration made by
+       someone else for a type we never used ourselves. Errors are
+       ignored as there is nothing useful we can do about them while
+       dying. */
+    if (global_state.pre_filters)          wimpfilter_deregister(WimpFilter_PrePoll);
+    if (global_state.post_filters)         wimpfilter_deregister(WimpFilter_PostPoll);
+    if (global_state.copy_filters)         wimpfilter_deregister(WimpFilter_BlockCopy);
+    if (global_state.rect_filters)         wimpfilter_deregister(WimpFilter_GetRectangle);
+    if (global_state.post_rect_filters)    wimpfilter_deregister(WimpFilter_PostGetRectangle);
+    if (global_state.post_icon_filters)    wimpfilter_deregister(WimpFilter_PostIconGetRectangle);
+    if (global_state.icon_border_filters)  wimpfilter_deregister(WimpFilter_IconBorder);
+}

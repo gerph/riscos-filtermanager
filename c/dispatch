@@ -5,48 +5,298 @@
  * Date:        06 Aug 2026
  ******************************************************************/
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include "modhead.h"
+#include "filter.h"
+#include "swis.h"
+#include "Asm/callx.h"
+
+/* The _kernel_swi_regs for generic veneers is *actually* 12 registers long */
+/* This is true for the 32-bit modules; it's not true for 64-bit */
+typedef struct _kernel_swi_regs10_s {
+    int32_t r[12];
+} _kernel_swi_regs10;
+
+#ifdef __riscos64
+#error Not currently supported
+#endif
 
 
-_kernel_oserror *Filter_PrePoll_Handler(_kernel_swi_regs *regs, void *pw)
+/***************************************************************************
+ * Function:     Filter_PrePoll_Handler
+ * Description:  Called by the Wimp on entry to Wimp_Poll. Every registered
+ *               pre-filter interested in this task is called in turn,
+ *               each seeing the (possibly already modified) event mask
+ *               left by the previous filter in the chain.
+ *               Entry:  R0 = task's event mask, R2 = calling task handle.
+ *               Exit:   R0 = event mask to use; all other registers
+ *                       preserved.
+ **************************************************************************/
+_kernel_oserror *Filter_PrePoll_Handler(_kernel_swi_regs *inregs, void *pw)
 {
-    /* FIXME: Call all the filters for PrePoll */
+    _kernel_swi_regs10 *regs = (_kernel_swi_regs10 *)inregs; /* Actually the block passed is safely 12 regs long */
+    pre_filter_t *filter;
+
+    (void)pw;
+
+    for (filter = global_state.pre_filters; filter; filter = filter->next) {
+        if (filter->task_handle != 0 && filter->task_handle != regs->r[2]) {
+            continue;   /* Filter not interested in this task */
+        }
+
+        _callx((void *)filter->routine, filter->r12,
+               _INR(0, 9) | _OUTR(0, 9),
+               regs->r[0], regs->r[1], regs->r[2], regs->r[3], regs->r[4],
+               regs->r[5], regs->r[6], regs->r[7], regs->r[8], regs->r[9],
+               &regs->r[0], &regs->r[1], &regs->r[2], &regs->r[3], &regs->r[4],
+               &regs->r[5], &regs->r[6], &regs->r[7], &regs->r[8], &regs->r[9]);
+    }
+
+    return NULL;
 }
 
 
-_kernel_oserror *Filter_PostPoll_Handler(_kernel_swi_regs *regs, void *pw)
+/***************************************************************************
+ * Function:     Filter_PostPoll_Handler
+ * Description:  Called by the Wimp on exit from Wimp_Poll. Every registered
+ *               post-filter interested in this task and event is called.
+ *               A filter claims the event by returning R0 = -1, in which
+ *               case later filters in the chain still run (each seeing the
+ *               original, unclaimed, event code) but the event is finally
+ *               reported to the Wimp as claimed.
+ *               Entry:  R0 = event code, R1 -> event block,
+ *                       R2 = calling task handle.
+ *               Exit:   R0 = modified event code, or -1 if claimed;
+ *                       [R1] may be modified.
+ **************************************************************************/
+_kernel_oserror *Filter_PostPoll_Handler(_kernel_swi_regs *inregs, void *pw)
 {
-    /* FIXME: Call all the filters for PostPoll */
+    _kernel_swi_regs10 *regs = (_kernel_swi_regs10 *)inregs; /* Actually the block passed is safely 12 regs long */
+    post_filter_t *filter;
+    int original_event = regs->r[0];
+    int claimed = 0;
+
+    (void)pw;
+
+    for (filter = global_state.post_filters; filter; filter = filter->next) {
+        int mask_bit;
+
+        if (filter->task_handle != 0 && filter->task_handle != regs->r[2]) {
+            continue;   /* Filter not interested in this task */
+        }
+
+        /* event_mask bit set => filter does NOT want this event */
+        mask_bit = (regs->r[0] >= 0 && regs->r[0] <= 31) ? (1 << regs->r[0]) : 0;
+        if (filter->event_mask & mask_bit) {
+            continue;   /* Filter not interested in this event */
+        }
+
+        _callx((void *)filter->routine, filter->r12,
+               _INR(0, 9) | _OUTR(0, 9),
+               regs->r[0], regs->r[1], regs->r[2], regs->r[3], regs->r[4],
+               regs->r[5], regs->r[6], regs->r[7], regs->r[8], regs->r[9],
+               &regs->r[0], &regs->r[1], &regs->r[2], &regs->r[3], &regs->r[4],
+               &regs->r[5], &regs->r[6], &regs->r[7], &regs->r[8], &regs->r[9]);
+
+        if (regs->r[0] == -1) {
+            claimed = 1;
+            regs->r[0] = original_event;   /* restore for any later filters */
+        }
+    }
+
+    if (claimed) {
+        regs->r[0] = -1;
+    }
+
+    return NULL;
 }
 
 
-_kernel_oserror *Filter_BlockCopy_Handler(_kernel_swi_regs *regs, void *pw)
+/***************************************************************************
+ * Function:     Filter_BlockCopy_Handler
+ * Description:  Called by the Wimp when copying a rectangle. Every
+ *               registered copy filter is called; there is no task
+ *               restriction (copy filters are not registered per-task)
+ *               and no "claim" protocol.
+ *               Entry:  R2-R5 = destination bounding box,
+ *                       R6-R9 = source bounding box,
+ *                       R10   = window handle - 1.
+ *               Exit:   all other registers preserved (except R12).
+ **************************************************************************/
+_kernel_oserror *Filter_BlockCopy_Handler(_kernel_swi_regs *inregs, void *pw)
 {
-    /* FIXME: Call all the filters for BlockCopy */
+    _kernel_swi_regs10 *regs = (_kernel_swi_regs10 *)inregs; /* Actually the block passed is safely 12 regs long */
+    copy_filter_t *filter;
+
+    (void)pw;
+
+    for (filter = global_state.copy_filters; filter; filter = filter->next) {
+        /* R10 is input-only for this filter type (never documented as
+           modified), so it does not need to be in the _OUTR list - _callx
+           can only return R0-R9 anyway. */
+        _callx((void *)filter->routine, filter->r12,
+               _INR(0, 10) | _OUTR(0, 9),
+               regs->r[0], regs->r[1], regs->r[2], regs->r[3], regs->r[4],
+               regs->r[5], regs->r[6], regs->r[7], regs->r[8], regs->r[9],
+               regs->r[10],
+               &regs->r[0], &regs->r[1], &regs->r[2], &regs->r[3], &regs->r[4],
+               &regs->r[5], &regs->r[6], &regs->r[7], &regs->r[8], &regs->r[9]);
+    }
+
+    return NULL;
 }
 
 
-_kernel_oserror *Filter_GetRectangle_Handler(_kernel_swi_regs *regs, void *pw)
+/***************************************************************************
+ * Function:     Filter_GetRectangle_Handler
+ * Description:  Called by the Wimp on entry to int_get_rectangle. Every
+ *               registered rect filter interested in this task is
+ *               called; there is no "claim" protocol.
+ *               Entry:  R2 = calling task handle, R10 = window handle - 1.
+ *               Exit:   all other registers preserved.
+ **************************************************************************/
+_kernel_oserror *Filter_GetRectangle_Handler(_kernel_swi_regs *inregs, void *pw)
 {
-    /* FIXME: Call all the filters for GetRectangle */
+    _kernel_swi_regs10 *regs = (_kernel_swi_regs10 *)inregs; /* Actually the block passed is safely 12 regs long */
+    rect_filter_t *filter;
+
+    (void)pw;
+
+    for (filter = global_state.rect_filters; filter; filter = filter->next) {
+        if (filter->task_handle != 0 && filter->task_handle != regs->r[2]) {
+            continue;   /* Filter not interested in this task */
+        }
+
+        /* R10 is input-only for this filter type (never documented as
+           modified), so it does not need to be in the _OUTR list - _callx
+           can only return R0-R9 anyway. */
+        _callx((void *)filter->routine, filter->r12,
+               _INR(0, 10) | _OUTR(0, 9),
+               regs->r[0], regs->r[1], regs->r[2], regs->r[3], regs->r[4],
+               regs->r[5], regs->r[6], regs->r[7], regs->r[8], regs->r[9],
+               regs->r[10],
+               &regs->r[0], &regs->r[1], &regs->r[2], &regs->r[3], &regs->r[4],
+               &regs->r[5], &regs->r[6], &regs->r[7], &regs->r[8], &regs->r[9]);
+    }
+
+    return NULL;
 }
 
 
-_kernel_oserror *Filter_PostGetRectangle_Handler(_kernel_swi_regs *regs, void *pw)
+/***************************************************************************
+ * Function:     Filter_PostGetRectangle_Handler
+ * Description:  Called by the Wimp on exit from int_get_rectangle. Every
+ *               registered post-rect filter interested in this task is
+ *               called; there is no "claim" protocol.
+ *               Entry:  R2 = calling task handle, R6-R9 = screen
+ *                       coordinates of rectangle, R10 = window handle - 1.
+ *               Exit:   all other registers preserved.
+ **************************************************************************/
+_kernel_oserror *Filter_PostGetRectangle_Handler(_kernel_swi_regs *inregs, void *pw)
 {
-    /* FIXME: Call all the filters for PostGetRectangle */
+    _kernel_swi_regs10 *regs = (_kernel_swi_regs10 *)inregs; /* Actually the block passed is safely 12 regs long */
+    post_rect_filter_t *filter;
+
+    (void)pw;
+
+    for (filter = global_state.post_rect_filters; filter; filter = filter->next) {
+        if (filter->task_handle != 0 && filter->task_handle != regs->r[2]) {
+            continue;   /* Filter not interested in this task */
+        }
+
+        /* R10 is input-only for this filter type (never documented as
+           modified), so it does not need to be in the _OUTR list - _callx
+           can only return R0-R9 anyway. */
+        _callx((void *)filter->routine, filter->r12,
+               _INR(0, 10) | _OUTR(0, 9),
+               regs->r[0], regs->r[1], regs->r[2], regs->r[3], regs->r[4],
+               regs->r[5], regs->r[6], regs->r[7], regs->r[8], regs->r[9],
+               regs->r[10],
+               &regs->r[0], &regs->r[1], &regs->r[2], &regs->r[3], &regs->r[4],
+               &regs->r[5], &regs->r[6], &regs->r[7], &regs->r[8], &regs->r[9]);
+    }
+
+    return NULL;
 }
 
 
-_kernel_oserror *Filter_PostIconGetRectangle_Handler(_kernel_swi_regs *regs, void *pw)
+/***************************************************************************
+ * Function:     Filter_PostIconGetRectangle_Handler
+ * Description:  Called by the Wimp on entry to int_get_rectangle, after it
+ *               has drawn the icons for the previous rectangle. Every
+ *               registered post-icon filter interested in this task is
+ *               called; there is no "claim" protocol.
+ *               Entry:  R2 = calling task handle, R6-R9 = screen
+ *                       coordinates of rectangle, R10 = window handle - 1.
+ *               Exit:   all other registers preserved.
+ **************************************************************************/
+_kernel_oserror *Filter_PostIconGetRectangle_Handler(_kernel_swi_regs *inregs, void *pw)
 {
-    /* FIXME: Call all the filters for PostIconGetRectangle */
+    _kernel_swi_regs10 *regs = (_kernel_swi_regs10 *)inregs; /* Actually the block passed is safely 12 regs long */
+    post_icon_filter_t *filter;
+
+    (void)pw;
+
+    for (filter = global_state.post_icon_filters; filter; filter = filter->next) {
+        if (filter->task_handle != 0 && filter->task_handle != regs->r[2]) {
+            continue;   /* Filter not interested in this task */
+        }
+
+        /* R10 is input-only for this filter type (never documented as
+           modified), so it does not need to be in the _OUTR list - _callx
+           can only return R0-R9 anyway. */
+        _callx((void *)filter->routine, filter->r12,
+               _INR(0, 10) | _OUTR(0, 9),
+               regs->r[0], regs->r[1], regs->r[2], regs->r[3], regs->r[4],
+               regs->r[5], regs->r[6], regs->r[7], regs->r[8], regs->r[9],
+               regs->r[10],
+               &regs->r[0], &regs->r[1], &regs->r[2], &regs->r[3], &regs->r[4],
+               &regs->r[5], &regs->r[6], &regs->r[7], &regs->r[8], &regs->r[9]);
+    }
+
+    return NULL;
 }
 
 
-_kernel_oserror *Filter_IconBorder_Handler(_kernel_swi_regs *regs, void *pw)
+/***************************************************************************
+ * Function:     Filter_IconBorder_Handler
+ * Description:  Called by the Wimp when an icon border requires
+ *               rendering. Every registered icon border filter whose
+ *               border_mask includes this border type (R0) is called;
+ *               unlike the other filter types there is no task
+ *               restriction and no "claim" protocol - all matching
+ *               filters are called.
+ *               Entry:  R9 = operation (see WimpFilter_IconBorder_*),
+ *                       R0 = border type, R1 = icon flags,
+ *                       R2 = bounding box (+dx/dy), R3 = colour table,
+ *                       R4 = dithering flags / background colour.
+ *               Exit:   all other registers preserved (except R12).
+ **************************************************************************/
+_kernel_oserror *Filter_IconBorder_Handler(_kernel_swi_regs *inregs, void *pw)
 {
-    /* FIXME: Call all the filters for IconBorder */
+    _kernel_swi_regs10 *regs = (_kernel_swi_regs10 *)inregs; /* Actually the block passed is safely 12 regs long */
+    icon_border_filter_t *filter;
+    int mask_bit;
+
+    (void)pw;
+
+    /* border_mask bit set => filter DOES handle this border type */
+    mask_bit = (regs->r[0] >= 0 && regs->r[0] <= 31) ? (1 << regs->r[0]) : 0;
+
+    for (filter = global_state.icon_border_filters; filter; filter = filter->next) {
+        if ((filter->border_mask & mask_bit) == 0) {
+            continue;   /* Filter does not handle this border type */
+        }
+
+        _callx((void *)filter->routine, filter->r12,
+               _INR(0, 9) | _OUTR(0, 9),
+               regs->r[0], regs->r[1], regs->r[2], regs->r[3], regs->r[4],
+               regs->r[5], regs->r[6], regs->r[7], regs->r[8], regs->r[9],
+               &regs->r[0], &regs->r[1], &regs->r[2], &regs->r[3], &regs->r[4],
+               &regs->r[5], &regs->r[6], &regs->r[7], &regs->r[8], &regs->r[9]);
+    }
+
+    return NULL;
 }
-
-

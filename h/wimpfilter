@@ -42,11 +42,74 @@
  Function:      wimp_registerfilter
  Description:   Register the filter handlers
  Parameters:    filter_type = the filter type (WimpFilter_*)
-                func -> the function to register
-                ws = the workspace value to pass in R12
+                func -> the function to register, or NULL to release
+                        the registration for this filter_type
+                ws = the workspace value to pass in R12, or NULL when
+                     releasing a registration
  Returns:       none
  ******************************************************************/
-_kernel_oserror *wimp_reisterfilter(int filter_type, void *func, void *ws);
+_kernel_oserror *wimp_registerfilter(int filter_type, void *func, void *ws);
+
+
+/*************************************************** Gerph *********
+ Function:      wimpfilter_register
+ Description:   Register our dispatch entry for a filter type with the
+                Wimp. This should be called whenever the list of
+                filters for filter_type has just become non-empty,
+                ie when the first filter of that type is registered.
+ Parameters:    filter_type = the filter type (WimpFilter_*)
+                pw -> module private word; this is passed back to us
+                      in R12 by the Wimp when it calls our dispatch
+                      entry, and is what generic-veneers use to
+                      recover the private word for the handler
+ Returns:       pointer to error, or NULL if successful
+ ******************************************************************/
+_kernel_oserror *wimpfilter_register(int filter_type, void *pw);
+
+
+/*************************************************** Gerph *********
+ Function:      wimpfilter_deregister
+ Description:   Release our dispatch entry for a filter type from the
+                Wimp. This should be called whenever the list of
+                filters for filter_type has just become empty, ie
+                when the last filter of that type is deregistered.
+ Parameters:    filter_type = the filter type (WimpFilter_*)
+ Returns:       pointer to error, or NULL if successful
+ ******************************************************************/
+_kernel_oserror *wimpfilter_deregister(int filter_type);
+
+
+/*************************************************** Gerph *********
+ Function:      wimpfilter_service_register
+ Description:   Register with the Wimp our dispatch entry for every
+                filter type which currently has at least one filter
+                attached. Intended to be called on receipt of
+                Service_WimpRegisterFilters, which is broadcast when
+                a Wimp starts and wants any filter handlers installed
+                (or re-installed, if it has restarted and lost our
+                previous registrations).
+ Parameters:    pw -> module private word, as passed to wimpfilter_register
+ Returns:       none; failures to register with the Wimp are not
+                treated as fatal to the service call
+ ******************************************************************/
+void wimpfilter_service_register(void *pw);
+
+
+/*************************************************** Gerph *********
+ Function:      wimpfilter_release_all
+ Description:   Release our dispatch entries from the Wimp for every
+                filter type we ourselves currently hold registered (ie
+                those whose list is non-empty). Intended to be called
+                as the module dies, before the filter lists themselves
+                are freed. Types we never registered are left alone,
+                since Wimp_RegisterFilter holds a single handler per
+                type and we must not clear a registration that belongs
+                to somebody else.
+ Parameters:    none
+ Returns:       none; errors are ignored as we are shutting down
+                anyway
+ ******************************************************************/
+void wimpfilter_release_all(void);
 
 
 #endif
