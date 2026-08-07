@@ -1,0 +1,486 @@
+<?xml version="1.0"?>
+<!DOCTYPE riscos-prm PUBLIC "-//Gerph//DTD PRM documentation 1.03//EN"
+                            "http://gerph.org/dtd/103/prm.dtd">
+
+<riscos-prm>
+<chapter title="Wimp_RegisterFilter">
+
+<section title="Introduction and Overview">
+<p>
+<reference type="swi" name="Wimp_RegisterFilter"/> lets a module intercept parts of the
+Wimp's internal processing of <reference type="swi" name="Wimp_Poll"/> and window redraw,
+by supplying the address of a routine to be called at one of several fixed points. These
+points are called filter types, and cover the delivery of events, the redraw of window
+rectangles, the copying of screen blocks, and the rendering of custom icon borders.
+</p>
+<p>
+The Wimp holds a single registered address for each filter type. Registering a new address
+for a type that already has one replaces the previous registration; it does not add to a
+chain. Because of this, only one client at a time can usefully hold a direct registration for
+a given filter type. FilterManager exists to work around this limit: it is itself the sole
+direct client of <reference type="swi" name="Wimp_RegisterFilter"/> for every filter type it
+needs, and provides its own registration SWIs (<userinput>Filter_RegisterPreFilter</userinput>
+and related calls) so that any number of tasks can attach a filter of a given type. When
+FilterManager's own dispatch routine is called by the Wimp, it walks its list of registered
+filters of that type and calls each of them in turn, using the same calling convention the
+Wimp itself uses.
+</p>
+<p>
+This chapter documents the <reference type="swi" name="Wimp_RegisterFilter"/> interface
+itself, and the calling convention for each of the seven filter types - the entry points that
+FilterManager (or any other direct client of the SWI) must supply to the Wimp, and that
+FilterManager in turn calls on behalf of each task that has registered a filter with it.
+</p>
+</section>
+
+<section title="Technical details">
+<p>
+A registered filter routine is called directly, as a subroutine, from within the Wimp's own
+processing - it is not entered as a SWI or a vector claim, and there is no error-return
+convention. Unless stated otherwise for a particular filter type, a filter routine must
+preserve every register it does not use.
+</p>
+<p>
+R12 holds the value that was supplied in R2 when the routine was registered with
+<reference type="swi" name="Wimp_RegisterFilter"/>. This is normally a workspace pointer,
+and is the only value a filter routine can rely on to identify which module or task it
+belongs to.
+</p>
+<p>
+The filter types are:
+</p>
+<p>
+<value-table head-number="Type" head-value="Meaning">
+ <value number="0"><reference type="entry" name="PreFilter" use-description="yes"/></value>
+ <value number="1"><reference type="entry" name="PostFilter" use-description="yes"/></value>
+ <value number="2"><reference type="entry" name="CopyFilter" use-description="yes"/></value>
+ <value number="3"><reference type="entry" name="RectFilter" use-description="yes"/></value>
+ <value number="4"><reference type="entry" name="PostRectFilter" use-description="yes"/></value>
+ <value number="5"><reference type="entry" name="PostIconFilter" use-description="yes"/></value>
+ <value number="6"><reference type="entry" name="IconBorderFilter" use-description="yes"/></value>
+</value-table>
+</p>
+<p>
+Only <reference type="entry" name="PostFilter">PostFilter</reference> has a way to signal
+that it has handled the call: returning <userinput>R0</userinput> as -1 claims the event, so
+that it is not delivered to the polling task. Filters of every other type are purely
+observational as far as the Wimp is concerned - they cannot prevent the operation they were
+called about from completing, only act alongside it (for example, by drawing additional
+screen content, or adjusting an event before it is delivered).
+</p>
+<p>
+<reference type="entry" name="RectFilter">RectFilter</reference>,
+<reference type="entry" name="PostRectFilter">PostRectFilter</reference>,
+<reference type="entry" name="PostIconFilter">PostIconFilter</reference> and
+<reference type="entry" name="CopyFilter">CopyFilter</reference> are all called during window
+redraw, and are given a window handle rather than a task handle, since redraw is not
+necessarily driven by the window's owning task. <reference type="entry"
+name="IconBorderFilter">IconBorderFilter</reference> filters are registered against a bitmask
+of border types, given as <userinput>R3</userinput> to
+<reference type="swi" name="Wimp_RegisterFilter"/> when a client of FilterManager registers
+its filter; only filters whose mask includes the border type being rendered are called.
+</p>
+</section>
+
+<section title="Service calls">
+<service-definition name="WimpRegisterFilters"
+                    number="86"
+                    description="The Wimp requires its filter handlers to be (re-)installed">
+<entry>
+ <register-use number="1">&hex;86 (reason code)</register-use>
+</entry>
+
+<exit>
+ <register-use number="0-1" state="preserved"/>
+</exit>
+
+<use>
+<p>
+Broadcast by the Wimp when it starts, or restarts, and needs filter handlers to be installed.
+A Wimp restart discards any addresses previously given to
+<reference type="swi" name="Wimp_RegisterFilter"/>, so a module holding filter registrations
+must treat this service as an instruction to re-issue
+<reference type="swi" name="Wimp_RegisterFilter"/> for every filter type it still has
+filters attached to. Filter types with nothing currently registered do not need to be
+touched.
+</p>
+</use>
+
+<related>
+<reference type="swi" name="Wimp_RegisterFilter"/>
+</related>
+</service-definition>
+</section>
+
+<section title="SWI calls">
+<swi-definition name="Wimp_RegisterFilter"
+                number="400F5"
+                description="Registers or removes a filter routine for one aspect of Wimp processing">
+
+<entry>
+ <register-use number="0">
+ Filter type:
+ <p>
+ <value-table head-number="Type" head-value="Meaning">
+  <value number="0"><reference type="entry" name="PreFilter" use-description="yes"/></value>
+  <value number="1"><reference type="entry" name="PostFilter" use-description="yes"/></value>
+  <value number="2"><reference type="entry" name="CopyFilter" use-description="yes"/></value>
+  <value number="3"><reference type="entry" name="RectFilter" use-description="yes"/></value>
+  <value number="4"><reference type="entry" name="PostRectFilter" use-description="yes"/></value>
+  <value number="5"><reference type="entry" name="PostIconFilter" use-description="yes"/></value>
+  <value number="6"><reference type="entry" name="IconBorderFilter" use-description="yes"/></value>
+ </value-table>
+ </p>
+ </register-use>
+ <register-use number="1">
+ address of the routine to call for this filter type, or 0 to remove the current
+ registration for this type
+ </register-use>
+ <register-use number="2">
+ value to place in R12 whenever the routine is called, or 0 when removing a registration
+ </register-use>
+</entry>
+
+<exit>
+ <register-use number="0-2" state="preserved"/>
+</exit>
+
+<use>
+<p>
+Sets, replaces, or removes the routine the Wimp calls for one filter type. There is a single
+registration slot per filter type: registering a new address for a type that already has one
+silently replaces it, and there is no way to discover what was previously registered.
+Registering with <userinput>R1</userinput> and <userinput>R2</userinput> both 0 removes the
+current registration for that type, so that the Wimp no longer calls out for it.
+</p>
+<p>
+An out-of-range filter type in <userinput>R0</userinput> produces an error.
+</p>
+</use>
+
+<related>
+<reference type="entry" name="PreFilter"/>
+<reference type="entry" name="PostFilter"/>
+<reference type="entry" name="CopyFilter"/>
+<reference type="entry" name="RectFilter"/>
+<reference type="entry" name="PostRectFilter"/>
+<reference type="entry" name="PostIconFilter"/>
+<reference type="entry" name="IconBorderFilter"/>
+<reference type="service" name="WimpRegisterFilters"/>
+</related>
+
+</swi-definition>
+</section>
+
+<section title="Entry points">
+<p>
+Each of the following describes the calling convention a routine must follow to be
+registered for the given filter type, whether it is registered directly with
+<reference type="swi" name="Wimp_RegisterFilter"/> or, as is normal, attached through
+FilterManager's own <userinput>Filter_Register...Filter</userinput> SWIs and called by
+FilterManager on the Wimp's behalf.
+</p>
+
+<entry-definition name="PreFilter"
+                  description="Called before the Wimp examines a task's event mask in Wimp_Poll">
+<entry>
+ <register-use number="0">the task's event mask, as passed to <reference type="swi" name="Wimp_Poll"/></register-use>
+ <register-use number="2">task handle of the polling task</register-use>
+</entry>
+
+<exit>
+ <register-use number="0">the event mask to use in place of the one supplied</register-use>
+ <register-use number="1-11" state="preserved"/>
+</exit>
+
+<use>
+<p>
+Called on entry to <reference type="swi" name="Wimp_Poll"/>, before the Wimp uses the event
+mask to decide which events may wake the task. A filter may change the mask in
+<userinput>R0</userinput>, for example to force the task to be woken for an event it would
+otherwise have masked out. Where more than one filter of this type is registered against a
+task, each sees the mask as left by the one before it.
+</p>
+<p>
+When registered through FilterManager, a filter is only called if it was registered for task
+0 (meaning every task) or for the task named in <userinput>R2</userinput>.
+</p>
+</use>
+
+<related>
+<reference type="swi" name="Wimp_RegisterFilter"/>
+<reference type="swi" name="Wimp_Poll"/>
+</related>
+</entry-definition>
+
+<entry-definition name="PostFilter"
+                  description="Called for each event about to be delivered by Wimp_Poll">
+<entry>
+ <register-use number="0">event code, as would be returned by <reference type="swi" name="Wimp_Poll"/></register-use>
+ <register-use number="1">pointer to the event block</register-use>
+ <register-use number="2">task handle of the polling task</register-use>
+</entry>
+
+<exit>
+ <register-use number="0">the event code to deliver instead, or -1 to claim the event</register-use>
+ <register-use number="1">unchanged, or updated to describe a modified event</register-use>
+ <register-use number="2-11" state="preserved"/>
+</exit>
+
+<use>
+<p>
+Called on exit from <reference type="swi" name="Wimp_Poll"/>, once for every event that is
+about to be returned to the polling task. A filter may change the event code or the contents
+of the event block pointed to by <userinput>R1</userinput>, or claim the event entirely by
+returning <userinput>R0</userinput> as -1, in which case the event is not delivered to the
+task at all.
+</p>
+<p>
+When more than one filter of this type is registered, every one of them is still called even
+after one has claimed the event, but each sees the original, unclaimed, event code rather
+than -1 or another filter's modification; the event is only reported to the task as claimed
+once every registered filter has had a turn.
+</p>
+<p>
+A filter is registered against an event mask (a bit per event number, up to event 31; higher
+event numbers cannot be masked). A set bit means the filter is not interested in that event,
+matching the sense of the event mask used by <reference type="swi" name="Wimp_Poll"/> itself.
+A filter is only called for an event it has not masked out, and, when registered through
+FilterManager, only if it was registered for task 0 or for the task named in
+<userinput>R2</userinput>.
+</p>
+</use>
+
+<related>
+<reference type="swi" name="Wimp_RegisterFilter"/>
+<reference type="swi" name="Wimp_Poll"/>
+</related>
+</entry-definition>
+
+<entry-definition name="CopyFilter"
+                  description="Called when the Wimp copies a rectangular block of screen">
+<entry>
+ <register-use number="2-5">destination bounding box, as screen coordinates</register-use>
+ <register-use number="6-9">source bounding box, as screen coordinates</register-use>
+ <register-use number="10">window handle - 1</register-use>
+</entry>
+
+<exit>
+ <register-use number="0-11" state="preserved"/>
+ <register-use number="12">corrupted</register-use>
+</exit>
+
+<use>
+<p>
+Called whenever the Wimp copies a rectangular area of screen from one place to another, for
+example while scrolling a window. A filter can use this to keep overlay content, drawn
+outside the Wimp's own redraw of the window, aligned with the part of the screen that has
+moved.
+</p>
+<p>
+Copy filters are not registered against a task, and every registered copy filter is called
+for every block copy, regardless of which window or task caused it.
+</p>
+</use>
+
+<related>
+<reference type="swi" name="Wimp_RegisterFilter"/>
+</related>
+</entry-definition>
+
+<entry-definition name="RectFilter"
+                  description="Called before the Wimp redraws the icons in a window rectangle">
+<entry>
+ <register-use number="2">task handle of the task that owns the window being redrawn</register-use>
+ <register-use number="10">window handle - 1</register-use>
+</entry>
+
+<exit>
+ <register-use number="0-11" state="preserved"/>
+</exit>
+
+<use>
+<p>
+Called once for each rectangle the Wimp is about to redraw within a window, before any of the
+window's icons in that rectangle have been drawn. A filter can use this to draw content that
+should sit behind the window's icons.
+</p>
+<p>
+When registered through FilterManager, a filter is only called if it was registered for task
+0 or for the task named in <userinput>R2</userinput>.
+</p>
+</use>
+
+<related>
+<reference type="swi" name="Wimp_RegisterFilter"/>
+<reference type="entry" name="PostRectFilter"/>
+</related>
+</entry-definition>
+
+<entry-definition name="PostRectFilter"
+                  description="Called after the Wimp has redrawn the icons in a window rectangle">
+<entry>
+ <register-use number="2">task handle of the task that owns the window being redrawn</register-use>
+ <register-use number="6-9">screen coordinates of the rectangle that was redrawn</register-use>
+ <register-use number="10">window handle - 1</register-use>
+</entry>
+
+<exit>
+ <register-use number="0-11" state="preserved"/>
+</exit>
+
+<use>
+<p>
+Called once for each rectangle the Wimp has just finished redrawing within a window, after
+all of the window's icons in that rectangle have been drawn. A filter can use this to draw
+content on top of the window's own icons.
+</p>
+<p>
+When registered through FilterManager, a filter is only called if it was registered for task
+0 or for the task named in <userinput>R2</userinput>.
+</p>
+</use>
+
+<related>
+<reference type="swi" name="Wimp_RegisterFilter"/>
+<reference type="entry" name="RectFilter"/>
+</related>
+</entry-definition>
+
+<entry-definition name="PostIconFilter"
+                  description="Called between rectangles during window redraw, after the previous rectangle's icons">
+<entry>
+ <register-use number="2">task handle of the task that owns the window being redrawn</register-use>
+ <register-use number="6-9">screen coordinates of the rectangle just completed</register-use>
+ <register-use number="10">window handle - 1</register-use>
+</entry>
+
+<exit>
+ <register-use number="0-11" state="preserved"/>
+</exit>
+
+<use>
+<p>
+Called during window redraw once the Wimp has finished drawing the icons for one rectangle
+and is about to move on to the next, or to finish. Unlike
+<reference type="entry" name="PostRectFilter">PostRectFilter</reference>, this is not a
+per-rectangle "after" call paired with a "before" call - it is a single point between
+rectangles, used by filters that need to act once the icons for a rectangle are settled
+without needing to know about the start of the next one.
+</p>
+<p>
+When registered through FilterManager, a filter is only called if it was registered for task
+0 or for the task named in <userinput>R2</userinput>.
+</p>
+</use>
+
+<related>
+<reference type="swi" name="Wimp_RegisterFilter"/>
+<reference type="entry" name="PostRectFilter"/>
+</related>
+</entry-definition>
+
+<entry-definition name="IconBorderFilter"
+                  description="Called to draw, size, fill, or colour a custom icon border">
+<entry>
+ <register-use number="0">border type</register-use>
+ <register-use number="1">icon flags</register-use>
+ <register-use number="2">
+ bounding box; for the size, fill, and draw operations this also carries the border's
+ dx/dy values
+ </register-use>
+ <register-use number="3">colour table</register-use>
+ <register-use number="4">
+ dithering flags, for the fill and draw operations; the window's background colour, for the
+ colour operation
+ </register-use>
+ <register-use number="9">
+ operation:
+ <p>
+ <value-table head-number="Operation" head-value="Action">
+  <value number="0">draw the border into the box given in <userinput>R2</userinput></value>
+  <value number="1">calculate the border's size, insetting the box in <userinput>R2</userinput> by the border</value>
+  <value number="2">fill the border, within the box given in <userinput>R2</userinput></value>
+  <value number="3">set up the colours to be used for the border, from the colour table in <userinput>R3</userinput></value>
+  <value number="4">read state flags describing how the border behaves</value>
+ </value-table>
+ </p>
+ </register-use>
+</entry>
+
+<exit>
+ <register-use number="0-11" state="preserved"/>
+ <register-use number="12">corrupted</register-use>
+</exit>
+
+<use>
+<p>
+Called whenever the Wimp needs to draw, size, fill, or set up colours for an icon whose
+border type is not one of the Wimp's own built-in styles. A filter is registered against a
+bitmask of the border types it handles, and is only called for a border type included in that
+mask.
+</p>
+<p>
+<fixme>
+The register layout for operation 4 (read state flags) has not been confirmed against a
+running Wimp. The flags it reports are believed to include at least
+WimpFilterIBS_ChangesShape (bit 0, set if the border's shape can change and so needs full
+redraws rather than incremental ones) and WimpFilterIBS_Highlightable (bit 1, set if the
+border supports a highlighted state), but the register carrying them on exit is not
+verified here.
+</fixme>
+</p>
+</use>
+
+<related>
+<reference type="swi" name="Wimp_RegisterFilter"/>
+</related>
+</entry-definition>
+
+</section>
+
+<section title="Examples">
+<p>
+Registering a PreFilter routine directly with the Wimp:
+</p>
+<p>
+<extended-example type="asm">
+        ADR     R1, my_pre_filter
+        MOV     R2, R12                 ; workspace pointer
+        MOV     R0, #0                  ; 0 = PreFilter
+        SWI     "Wimp_RegisterFilter"
+</extended-example>
+</p>
+<p>
+Removing that registration again:
+</p>
+<p>
+<extended-example type="asm">
+        MOV     R0, #0                  ; 0 = PreFilter
+        MOV     R1, #0
+        MOV     R2, #0
+        SWI     "Wimp_RegisterFilter"
+</extended-example>
+</p>
+</section>
+
+</chapter>
+
+<meta>
+ <maintainer>
+  <email name="Gerph" address="gerph@gerph.org"/>
+ </maintainer>
+ <disclaimer>
+    <p>
+    &copy; Gerph, 2026. Distributed as part of the FilterManager2 project, under the MIT
+    licence.
+    </p>
+ </disclaimer>
+
+ <history>
+  <revision number="1" author="Gerph" date="07 Aug 2026" title="Initial version">
+    <change>Documented the Wimp_RegisterFilter SWI, the Service_WimpRegisterFilters service, and the calling convention for each of the seven filter entry points.</change>
+  </revision>
+ </history>
+</meta>
+</riscos-prm>
