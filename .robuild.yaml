@@ -56,20 +56,21 @@ jobs:
       - amu -f Makefile rom BUILD26=1 BUILD32=
 
       # Tests - loading to check that it starts up
-      - echo
-      - echo *** Load the modules and exercise filter registration ***
-      - RMLoad rm32.FilterManager2
-      - RMLoad test.filterreg.rm32.FilterRegTest
-      - FilterRegTestStatus
-      - Filters
+      # We cannot load yet, because the Wimp_RegisterFilter SWI does not exist on Pyromaniac yet.
+      #- echo
+      #- echo *** Load the modules and exercise filter registration ***
+      #- RMLoad rm32.FilterManager2
+      #- RMLoad test.filterreg.rm32.FilterRegTest
+      #- FilterRegTestStatus
+      #- Filters
 
-      - echo
-      - echo *** Kill the test module ***
-      - RMKill FilterRegTest
+      #- echo
+      #- echo *** Kill the test module ***
+      #- RMKill FilterRegTest
 
-      - echo
-      - echo *** Kill the module ***
-      - RMKill FilterManager
+      #- echo
+      #- echo *** Kill the module ***
+      #- RMKill FilterManager
 
       # Construct the artifacts to release
       - echo *** Copy artifacts ***
