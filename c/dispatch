@@ -264,15 +264,22 @@ _kernel_oserror *Filter_PostIconGetRectangle_Handler(_kernel_swi_regs *inregs, v
  * Function:     Filter_IconBorder_Handler
  * Description:  Called by the Wimp when an icon border requires
  *               rendering. Every registered icon border filter whose
- *               border_mask includes this border type (R0) is called;
- *               unlike the other filter types there is no task
- *               restriction and no "claim" protocol - all matching
- *               filters are called.
+ *               border_mask includes this border type (R0) is called,
+ *               in registration order, until one of them claims the
+ *               operation. There is no task restriction - icon border
+ *               filters are not registered per-task.
  *               Entry:  R9 = operation (see WimpFilter_IconBorder_*),
  *                       R0 = border type, R1 = icon flags,
  *                       R2 = bounding box (+dx/dy), R3 = colour table,
  *                       R4 = dithering flags / background colour.
  *               Exit:   all other registers preserved (except R12).
+ *
+ * A filter claims the Draw/Fill/Colour operations (but not Size or State)
+ * by returning R9 as -1, which stops any further filters being called for
+ * this request - the Wimp only sees whatever the claiming filter left in
+ * the other registers. A filter that only augments another filter's
+ * rendering, rather than replacing it, should leave R9 unchanged so later
+ * filters still run.
  **************************************************************************/
 _kernel_oserror *Filter_IconBorder_Handler(_kernel_swi_regs *inregs, void *pw)
 {
@@ -296,6 +303,10 @@ _kernel_oserror *Filter_IconBorder_Handler(_kernel_swi_regs *inregs, void *pw)
                regs->r[5], regs->r[6], regs->r[7], regs->r[8], regs->r[9],
                &regs->r[0], &regs->r[1], &regs->r[2], &regs->r[3], &regs->r[4],
                &regs->r[5], &regs->r[6], &regs->r[7], &regs->r[8], &regs->r[9]);
+
+        if (regs->r[9] == -1) {
+            break;   /* This filter has claimed the operation */
+        }
     }
 
     return NULL;

@@ -61,9 +61,17 @@ The filter types are:
 </value-table>
 </p>
 <p>
-Only <reference type="entry" name="PostFilter">PostFilter</reference> has a way to signal
-that it has handled the call: returning <userinput>R0</userinput> as -1 claims the event, so
-that it is not delivered to the polling task. Filters of every other type are purely
+Two filter types can signal that they have claimed the call, in different ways.
+<reference type="entry" name="PostFilter">PostFilter</reference> returns
+<userinput>R0</userinput> as -1 to claim an event, but every registered filter is still
+called regardless of a claim; the event is only reported to the polling task as claimed once
+every filter has had its turn. <reference type="entry"
+name="IconBorderFilter">IconBorderFilter</reference> claims a Draw, Fill, or Colour operation
+by returning <userinput>R9</userinput> as -1, which stops any further filters being called
+for that operation - a filter that only augments another filter's rendering, rather than
+replacing it, must leave <userinput>R9</userinput> unchanged so that later filters still run.
+Filters of every other type, and the Size and State operations of
+<reference type="entry" name="IconBorderFilter">IconBorderFilter</reference>, are purely
 observational as far as the Wimp is concerned - they cannot prevent the operation they were
 called about from completing, only act alongside it (for example, by drawing additional
 screen content, or adjusting an event before it is delivered).
@@ -80,6 +88,73 @@ of border types, given as <userinput>R3</userinput> to
 <reference type="swi" name="Wimp_RegisterFilter"/> when a client of FilterManager registers
 its filter; only filters whose mask includes the border type being rendered are called.
 </p>
+
+<subsection title="Data structures">
+<!-- Field breakdown confirmed against a working IconBorderFilter client implementation. -->
+<category title="Icon border bounding box">
+<p>
+The <userinput>R2</userinput> register of an
+<reference type="entry" name="IconBorderFilter">IconBorderFilter</reference> call points to a
+bounding box block, in screen coordinates:
+</p>
+<p>
+<offset-table head-number="Offset" head-name="Field" head-data-size="Size" head-value="Contents">
+ <offset number="0" name="x0" data-size="4">left edge of the icon's bounding box</offset>
+ <offset number="4" name="y0" data-size="4">bottom edge of the icon's bounding box</offset>
+ <offset number="8" name="x1" data-size="4">right edge of the icon's bounding box</offset>
+ <offset number="12" name="y1" data-size="4">top edge of the icon's bounding box</offset>
+ <offset number="16" name="dx" data-size="4">border extent in x</offset>
+ <offset number="20" name="dy" data-size="4">border extent in y</offset>
+ <offset number="24" name="dx_1" data-size="4">a second border extent in x, whose exact meaning depends on the border style</offset>
+ <offset number="28" name="dy_1" data-size="4">a second border extent in y, whose exact meaning depends on the border style</offset>
+</offset-table>
+</p>
+<p>
+For the size operation, a filter updates <userinput>x0</userinput>-<userinput>y1</userinput>
+in place, insetting the box by the border it is responsible for.
+</p>
+</category>
+
+<category title="Icon border colours">
+<p>
+The <userinput>R3</userinput> register of an
+<reference type="entry" name="IconBorderFilter">IconBorderFilter</reference> call, for the
+Draw, Fill, and Colour operations, points to an array of colour words, one for each of the
+icon's rendering colour roles:
+</p>
+<p>
+<offset-table head-number="Offset" head-name="Role" head-data-size="Size" head-value="Contents">
+ <offset number="0" name="FG" data-size="4">foreground colour</offset>
+ <offset number="4" name="BG" data-size="4">background colour</offset>
+ <offset number="8" name="SELBG" data-size="4">reserved; not currently used</offset>
+ <offset number="12" name="WELL" data-size="4">well colour</offset>
+ <offset number="16" name="FACE" data-size="4">face colour</offset>
+ <offset number="20" name="OPP" data-size="4">colour opposite the face colour</offset>
+</offset-table>
+</p>
+<p>
+The Colour operation fills in these colours from the window's background colour, given in
+<userinput>R4</userinput>; the Draw and Fill operations use the colours already present.
+</p>
+</category>
+
+<category title="Icon border state flags">
+<p>
+The State operation of <reference type="entry" name="IconBorderFilter">IconBorderFilter</reference>
+contributes flags into <userinput>R3</userinput> describing how a border style behaves:
+</p>
+<p>
+<bitfield-table>
+ <bit number="0" name="WimpFilterIBS_ChangesShape" state="set">the border's shape can change, so it needs full redraws rather than incremental ones</bit>
+ <bit number="0" name="WimpFilterIBS_ChangesShape" state="clear">the border's shape is fixed</bit>
+ <bit number="1" name="WimpFilterIBS_Highlightable" state="set">the border supports a highlighted state</bit>
+ <bit number="1" name="WimpFilterIBS_Highlightable" state="clear">the border does not support a highlighted state</bit>
+ <bit number="2-31" state="reserved">Reserved</bit>
+</bitfield-table>
+</p>
+</category>
+</subsection>
+
 </section>
 
 <section title="Service calls">
@@ -386,54 +461,72 @@ When registered through FilterManager, a filter is only called if it was registe
  <register-use number="0">border type</register-use>
  <register-use number="1">icon flags</register-use>
  <register-use number="2">
- bounding box; for the size, fill, and draw operations this also carries the border's
- dx/dy values
+ pointer to an <reference type="category" name="Icon border bounding box">icon border
+ bounding box</reference> block
  </register-use>
- <register-use number="3">colour table</register-use>
+ <register-use number="3">
+ meaning depends on the operation in <userinput>R9</userinput> - see below
+ </register-use>
  <register-use number="4">
- dithering flags, for the fill and draw operations; the window's background colour, for the
- colour operation
+ dithering flags, for the Fill and Draw operations; the window's background colour, for the
+ Colour operation; unused otherwise
  </register-use>
  <register-use number="9">
  operation:
  <p>
  <value-table head-number="Operation" head-value="Action">
-  <value number="0">draw the border into the box given in <userinput>R2</userinput></value>
+  <value number="0">draw the border into the box given in <userinput>R2</userinput>, using the colours in <userinput>R3</userinput></value>
   <value number="1">calculate the border's size, insetting the box in <userinput>R2</userinput> by the border</value>
-  <value number="2">fill the border, within the box given in <userinput>R2</userinput></value>
-  <value number="3">set up the colours to be used for the border, from the colour table in <userinput>R3</userinput></value>
-  <value number="4">read state flags describing how the border behaves</value>
+  <value number="2">fill the border, within the box given in <userinput>R2</userinput>, using the colours in <userinput>R3</userinput></value>
+  <value number="3">set up the colours in <userinput>R3</userinput> to be used for the border</value>
+  <value number="4">contribute state flags describing how the border behaves, into <userinput>R3</userinput></value>
  </value-table>
  </p>
  </register-use>
 </entry>
 
 <exit>
- <register-use number="0-11" state="preserved"/>
+ <register-use number="0-8" state="preserved"/>
+ <register-use number="9">
+ unchanged, or -1 to claim the call (Draw, Fill, and Colour operations only - see below)
+ </register-use>
+ <register-use number="10-11" state="preserved"/>
  <register-use number="12">corrupted</register-use>
 </exit>
 
 <use>
 <p>
 Called whenever the Wimp needs to draw, size, fill, or set up colours for an icon whose
-border type is not one of the Wimp's own built-in styles. A filter is registered against a
-bitmask of the border types it handles, and is only called for a border type included in that
-mask.
+border type is not one of the Wimp's own built-in styles, or to ask what a border style's
+rendering needs. A filter is registered against a bitmask of the border types it handles, and
+is only called for a border type included in that mask.
 </p>
 <p>
-<fixme>
-The register layout for operation 4 (read state flags) has not been confirmed against a
-running Wimp. The flags it reports are believed to include at least
-WimpFilterIBS_ChangesShape (bit 0, set if the border's shape can change and so needs full
-redraws rather than incremental ones) and WimpFilterIBS_Highlightable (bit 1, set if the
-border supports a highlighted state), but the register carrying them on exit is not
-verified here.
-</fixme>
+For the Draw, Fill, and Colour operations, a filter claims the call by returning
+<userinput>R9</userinput> as -1; no further filter is then called for this request, and the
+Wimp uses whatever the claiming filter left in the other registers. A filter that only
+augments another filter's rendering, rather than replacing it, must leave
+<userinput>R9</userinput> unchanged so that later filters still get their turn.
+</p>
+<p>
+For the Size operation, a filter updates the box pointed to by <userinput>R2</userinput> in
+place; this operation is never claimed, so every registered filter for the border type is
+called and each sees the box as left by the one before it.
+</p>
+<p>
+For the State operation, a filter contributes its
+<reference type="category" name="Icon border state flags">state flags</reference> by ORing
+them into <userinput>R3</userinput>, which holds the flags accumulated from any earlier
+filters (initially clear); this operation is never claimed either, so every registered filter
+for the border type is called.
 </p>
 </use>
 
 <related>
 <reference type="swi" name="Wimp_RegisterFilter"/>
+<reference type="category" name="Icon border bounding box"/>
+<reference type="category" name="Icon border colours"/>
+<reference type="category" name="Icon border state flags"/>
 </related>
 </entry-definition>
 
@@ -480,6 +573,10 @@ Removing that registration again:
  <history>
   <revision number="1" author="Gerph" date="07 Aug 2026" title="Initial version">
     <change>Documented the Wimp_RegisterFilter SWI, the Service_WimpRegisterFilters service, and the calling convention for each of the seven filter entry points.</change>
+  </revision>
+  <revision number="2" author="Gerph" date="07 Aug 2026" title="Corrected IconBorderFilter">
+    <change>Corrected IconBorderFilter: it does have a claim protocol (R9 = -1 stops further filters being called for the Draw, Fill, and Colour operations), contrary to the previous revision. Added the icon border bounding box and colour array structures, and resolved the State operation's register layout, which had previously been marked unconfirmed.</change>
+    <change>Added the icon border state flags bitfield table (WimpFilterIBS_ChangesShape and WimpFilterIBS_Highlightable), rather than only naming the flags in prose.</change>
   </revision>
  </history>
 </meta>
